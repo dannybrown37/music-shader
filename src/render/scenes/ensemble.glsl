@@ -2,7 +2,9 @@
 // arrangement. Kick: expanding rings and the core pulse. Snare/clap: shard bursts.
 // Hats: sparks on the outer orbit. Harmony: a 12-note wheel on the circle of fifths
 // (chords light up as shapes). Spectrum: a mirrored ring. Timbre bends the ring and
-// tints everything; bass swells the core.
+// tints everything; bass swells the core. Outside the wheel the last two seconds of
+// spectrum ripple outward as lit cells (older = further out), so the arrangement leaves
+// a visible trail.
 
 uniform float p_wheel;
 uniform float p_rings;
@@ -10,9 +12,14 @@ uniform float p_shards;
 uniform float p_sparks;
 uniform float p_spectrum;
 uniform float p_spin;
+uniform float p_history;
 
 const float WHEEL_R = 0.62;
 const float SPEC_R = 0.3;
+const float HIST_R0 = 0.78;
+const float HIST_R1 = 1.75;
+const float HIST_ANGLE_CELLS = 48.0;
+const float HIST_RADIAL_CELLS = 16.0;
 
 float angleDist(float a, float b) {
   float d = mod(a - b + PI, TAU) - PI;
@@ -20,7 +27,7 @@ float angleDist(float a, float b) {
 }
 
 void main() {
-  vec2 uv = centeredUv() + uShake;
+  vec2 uv = (centeredUv() + uShake) * 0.8;
   uv *= rot(uFlow * 0.05 * p_spin);
   float r = length(uv);
   float a = atan(uv.y, uv.x);
@@ -31,6 +38,19 @@ void main() {
 
   // Spectrum ring, mirrored left/right; timbre makes it wobble or go angular.
   float x = abs(mod(a + PI * 0.5, TAU) - PI) / PI;
+
+  // History cells: same mirrored frequency layout as the ring, age grows with radius.
+  if (r > HIST_R0) {
+    float hr = (r - HIST_R0) / (HIST_R1 - HIST_R0);
+    vec2 cellPos = vec2(x * HIST_ANGLE_CELLS * 0.5, hr * HIST_RADIAL_CELLS);
+    vec2 cid = floor(cellPos);
+    vec2 cf = fract(cellPos) - 0.5;
+    float age = (cid.y + 0.5) / HIST_RADIAL_CELLS;
+    float level = spectrogram(0.03 + (cid.x + 0.5) / (HIST_ANGLE_CELLS * 0.5) * 0.9, age);
+    float on = step(hash12(cid * 1.7), level * level * 1.3);
+    float cellMask = smoothstep(0.5, 0.36, max(abs(cf.x), abs(cf.y)));
+    col += ramp(0.4 + 0.5 * level) * on * cellMask * (1.0 - age) * (1.0 - age) * p_history * 0.6;
+  }
   float sx = 0.03 + x * 0.9;
   float spec = (spectrum(sx - 0.015) + 2.0 * spectrum(sx) + spectrum(sx + 0.015)) * 0.25;
   float wobble = 0.02 * uTimbre.x * sin(a * 5.0 + uFlow * 0.4) + 0.015 * uNoisy * sin(a * 23.0);

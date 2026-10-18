@@ -1,7 +1,9 @@
-// Orb: a living sphere. Its surface is the spectrum wrapped by latitude (bass at the
-// bottom, highs at the top), so each instrument raises its own band. Timbre morphs the
-// lobes and roughness, snares erupt spikes, kicks launch expanding shockwave shells,
-// hats glint off the surface and the stars.
+// Orb: a spectrogram globe. Latitude is frequency (bass at the bottom, highs at the top)
+// and longitude is time: new sound rises on the right-hand edge and sweeps across the
+// face, so you can watch each part arrive. The surface is a grid of LED tiles that light
+// with their band, like Tunnel's walls. Timbre morphs the lobes and roughness, snares
+// erupt spikes, kicks launch expanding shockwave shells, hats glint, and each section
+// moves the camera.
 
 uniform float p_size;
 uniform float p_spikes;
@@ -9,13 +11,24 @@ uniform float p_shells;
 uniform float p_rim;
 uniform float p_orbit;
 uniform float p_iridescence;
+uniform float p_tiles;
+uniform float p_camera;
+
+float gCamAz;
 
 float radius() { return p_size * (0.78 + 0.12 * uBass + 0.16 * uKick); }
+
+// 0 = now (right-hand limb), 0.5 = facing you (1 s ago), 1 = left-hand limb and the back (2 s ago).
+float ageAt(vec3 n) {
+  float lon = mod(atan(n.z, n.x) - gCamAz + PI, TAU) - PI;
+  return clamp((PI * 0.5 - lon) / PI, 0.0, 1.0);
+}
 
 float surface(vec3 p) {
   vec3 n = normalize(p);
   float lat = n.y * 0.5 + 0.5;
-  float disp = spectrum(lat * 0.96) * 0.28 * (0.45 + uLoud);
+  float s = spectrogram(lat * 0.96, ageAt(n));
+  float disp = s * s * 0.32 * (0.45 + uLoud);
   vec3 q = p * (1.8 + 1.8 * uBright) + vec3(0.0, uFlow * 0.25, 0.0);
   float rough = noise3(q * 2.0) * 0.55 + noise3(q * 4.3) * 0.3;
   disp += (rough - 0.42) * (0.05 + 0.22 * uNoisy);
@@ -61,9 +74,12 @@ float shells(vec3 ro, vec3 rd) {
 
 void main() {
   vec2 uv = centeredUv() + uShake;
-  float a = uFlow * 0.12 * p_orbit;
-  float elev = 0.35 * sin(uFlow * 0.05);
-  float dist = 3.4 - 0.35 * uIntensity;
+  vec3 shot = vec3(hash11(uSeed * 3.1), hash11(uSeed * 5.7), hash11(uSeed * 9.3)) * 2.0 - 1.0;
+  float orbitDir = mix(1.0, sign(shot.z + 1e-3), step(0.5, p_camera));
+  float a = uFlow * 0.12 * p_orbit * orbitDir + PI * shot.z * p_camera;
+  gCamAz = a;
+  float elev = 0.35 * sin(uFlow * 0.05) + 0.45 * shot.x * p_camera;
+  float dist = 3.4 - 0.35 * uIntensity + 0.6 * shot.y * p_camera;
   vec3 ro = dist * vec3(cos(a) * cos(elev), sin(elev), sin(a) * cos(elev));
   vec3 fw = normalize(-ro);
   vec3 rt = normalize(cross(vec3(0.0, 1.0, 0.0), fw));
@@ -90,8 +106,10 @@ void main() {
     vec3 p = ro + rd * t;
     vec3 n = normalAt(p);
     vec3 l = normalize(vec3(0.6, 0.8, -0.3));
-    float lat = normalize(p).y * 0.5 + 0.5;
-    float band = spectrum(lat * 0.96);
+    vec3 np = normalize(p);
+    float lat = np.y * 0.5 + 0.5;
+    float age = ageAt(np);
+    float band = spectrogram(lat * 0.96, age);
     float diff = max(dot(n, l), 0.0);
     float fres = pow(1.0 - max(dot(n, -rd), 0.0), 3.0);
     vec3 base = ramp(0.15 + 0.5 * band) * (0.08 + 0.5 * diff);
@@ -99,8 +117,18 @@ void main() {
     base = mix(base, irid * (0.15 + 0.6 * diff), p_iridescence * 0.6);
     vec3 h = normalize(l - rd);
     float spec = pow(max(dot(n, h), 0.0), 60.0) * (0.6 + 3.0 * uHat + 1.5 * uHigh);
-    col = base + vec3(spec) + ramp(0.85) * fres * p_rim * (0.6 + 1.2 * uMid + uKick);
-    col += ramp(0.7) * band * band * (0.4 + 1.5 * uOnset) * 0.6;
+    // A dark body so the lit tiles carry the music.
+    col = base * 0.45 + vec3(spec) * 0.6 + ramp(0.85) * fres * p_rim * (0.6 + 1.2 * uMid + uKick);
+    col += ramp(0.7) * band * band * (0.4 + 1.5 * uOnset) * 0.3;
+
+    // LED tiles fixed to the time/frequency grid, each lit when its band beats a random threshold.
+    vec2 tg = vec2(age * 30.0, lat * 22.0);
+    vec2 id = floor(tg);
+    vec2 fc = fract(tg) - 0.5;
+    float cell = smoothstep(0.5, 0.36, max(abs(fc.x), abs(fc.y)));
+    float lit = step(hash12(id * 1.31), band * band * 1.2);
+    float fade = 1.0 - 0.6 * age;
+    col += mix(ramp(0.55 + 0.4 * band), palette(lat * 0.7), 0.35) * cell * lit * fade * p_tiles * (1.2 + 1.2 * uLoud);
   }
 
   col += ramp(0.7) * aura * (0.4 + uBass + uKick) * p_rim;

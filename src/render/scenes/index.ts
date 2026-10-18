@@ -34,7 +34,7 @@ export const SCENES: SceneDef[] = [
   {
     id: "nebula",
     name: "Nebula",
-    description: "Domain-warped smoke with shockwave rings and sparkles",
+    description: "Domain-warped smoke: spectrum runs out from the core, kicks send shockwaves, notes flare by pitch",
     source: nebula,
     params: [
       { key: "scale", label: "Field scale", min: 0.5, max: 5, value: 2.2 },
@@ -44,6 +44,9 @@ export const SCENES: SceneDef[] = [
       { key: "stars", label: "Hat sparkles", min: 0, max: 3, value: 1 },
       { key: "glow", label: "Kick core glow", min: 0, max: 3, value: 1 },
       { key: "hueSpread", label: "Hue spread", min: 0, max: 1, value: 0.5 },
+      { key: "shock", label: "Kick shockwaves", min: 0, max: 3, value: 1 },
+      { key: "notes", label: "Note flares", min: 0, max: 3, value: 1 },
+      { key: "layout", label: "New drift per section", min: 0, max: 2, value: 1 },
     ],
     look: { feedback: 0.55, feedbackZoom: 0.008, feedbackSpin: 0.002, bloom: 1.1, bloomThreshold: 0.7 },
     palette: "Ember",
@@ -52,7 +55,7 @@ export const SCENES: SceneDef[] = [
   {
     id: "terrain",
     name: "Terrain",
-    description: "Synthwave flyover; the landscape is the last two seconds of spectrum",
+    description: "Synthwave flyover: the land is the last two seconds of spectrum, kicks roll in as waves, the sun is an equalizer",
     source: terrain,
     params: [
       { key: "height", label: "Mountain height", min: 0, max: 6, value: 1.6 },
@@ -60,7 +63,9 @@ export const SCENES: SceneDef[] = [
       { key: "sun", label: "Sun", min: 0, max: 2, value: 1 },
       { key: "road", label: "Road width", min: 0, max: 2, value: 0.7 },
       { key: "fog", label: "Fog", min: 0, max: 3, value: 1 },
-      { key: "stars", label: "Hat stars", min: 0, max: 3, value: 1 },
+      { key: "stars", label: "Hat stars & road lights", min: 0, max: 3, value: 1 },
+      { key: "waves", label: "Kick waves", min: 0, max: 3, value: 1 },
+      { key: "camera", label: "Camera moves per section", min: 0, max: 2, value: 1 },
     ],
     look: { feedback: 0.25, feedbackZoom: 0.0, feedbackSpin: 0, bloom: 1.3, bloomThreshold: 0.6, chromatic: 0.8 },
     palette: "Synthwave",
@@ -69,7 +74,7 @@ export const SCENES: SceneDef[] = [
   {
     id: "orb",
     name: "Orb",
-    description: "Raymarched sphere: spectrum by latitude, snare spikes, kick shockwave shells",
+    description: "Spectrogram globe: frequency by latitude, time sweeps across the face, snare spikes, kick shells",
     source: orb,
     params: [
       { key: "size", label: "Size", min: 0.4, max: 1.6, value: 1 },
@@ -78,6 +83,8 @@ export const SCENES: SceneDef[] = [
       { key: "rim", label: "Rim glow", min: 0, max: 3, value: 1 },
       { key: "orbit", label: "Orbit speed", min: 0, max: 3, value: 1 },
       { key: "iridescence", label: "Iridescence", min: 0, max: 1, value: 0.6 },
+      { key: "tiles", label: "Spectrogram tiles", min: 0, max: 3, value: 1 },
+      { key: "camera", label: "Camera moves per section", min: 0, max: 2, value: 1 },
     ],
     look: { feedback: 0.4, feedbackZoom: -0.004, feedbackSpin: 0, bloom: 1.2, bloomThreshold: 0.65 },
     palette: "Abyss",
@@ -103,7 +110,7 @@ export const SCENES: SceneDef[] = [
   {
     id: "kaleido",
     name: "Kaleido",
-    description: "Mirrored fractal crystal; timbre reshapes it, snares rotate the mirror",
+    description: "Mirrored fractal crystal cut into frequency rings; kicks ripple through it, timbre reshapes it",
     source: kaleido,
     params: [
       { key: "folds", label: "Mirror folds", min: 2, max: 16, value: 6, step: 1 },
@@ -112,6 +119,9 @@ export const SCENES: SceneDef[] = [
       { key: "spin", label: "Spin", min: 0, max: 3, value: 1 },
       { key: "glow", label: "Spark glow", min: 0, max: 3, value: 1 },
       { key: "morph", label: "Timbre morph", min: 0, max: 3, value: 1 },
+      { key: "bands", label: "Frequency rings", min: 0, max: 3, value: 1 },
+      { key: "shock", label: "Kick shockwaves", min: 0, max: 3, value: 1 },
+      { key: "layout", label: "New crystal per section", min: 0, max: 2, value: 1 },
     ],
     look: { feedback: 0.45, feedbackZoom: 0.006, feedbackSpin: 0.003, feedbackHue: 0.004, bloom: 1.2, bloomThreshold: 0.6 },
     palette: "Aurora",
@@ -129,6 +139,7 @@ export const SCENES: SceneDef[] = [
       { key: "sparks", label: "Hat sparks", min: 0, max: 3, value: 1 },
       { key: "spectrum", label: "Spectrum ring", min: 0, max: 3, value: 1 },
       { key: "spin", label: "Spin", min: -3, max: 3, value: 1 },
+      { key: "history", label: "Spectrum history", min: 0, max: 3, value: 1 },
     ],
     look: { feedback: 0.3, feedbackZoom: 0.003, feedbackSpin: 0, bloom: 1.3, bloomThreshold: 0.55, vignette: 0.8 },
     palette: "Synthwave",
@@ -137,7 +148,7 @@ export const SCENES: SceneDef[] = [
   {
     id: "particles",
     name: "Particles",
-    description: "Each part throws its own particles: kick embers, snare sparks, hat glitter, note orbs placed by pitch",
+    description: "Each part throws its own particles over a spectrum fountain: kick embers, snare sparks, hat glitter, note orbs by pitch",
     source: particles,
     params: [
       { key: "embers", label: "Kick embers", min: 0, max: 3, value: 1 },
@@ -146,6 +157,8 @@ export const SCENES: SceneDef[] = [
       { key: "orbs", label: "Note orbs", min: 0, max: 3, value: 1 },
       { key: "gravity", label: "Gravity", min: -1, max: 3, value: 1 },
       { key: "spread", label: "Burst speed", min: 0.2, max: 2.5, value: 1 },
+      { key: "fountain", label: "Spectrum fountain", min: 0, max: 3, value: 1 },
+      { key: "layout", label: "Flip fountain per section", min: 0, max: 1, value: 1, step: 1 },
     ],
     look: { feedback: 0.6, feedbackZoom: 0.004, feedbackSpin: 0, bloom: 1.3, bloomThreshold: 0.55 },
     palette: "Ember",

@@ -1,6 +1,8 @@
-// Nebula: domain-warped smoke. Bass deepens the warp, timbre bends the flow field,
-// kicks punch the zoom and light the core, snares fire refracting shockwave rings,
-// hats scatter sparkles, and brightness sharpens the filaments.
+// Nebula: domain-warped smoke. The spectrum runs outward from the core (bass in the
+// middle, highs at the rim) and quiet passages thin the smoke to wisps. Kicks send
+// shockwaves out from the core, so the beat stays visible as ripples. Snares fire
+// refracting rings, notes flare on a clock face by pitch, hats scatter sparkles.
+// Each section turns the drift a new way.
 
 uniform float p_scale;
 uniform float p_warp;
@@ -9,6 +11,13 @@ uniform float p_stars;
 uniform float p_glow;
 uniform float p_filaments;
 uniform float p_hueSpread;
+uniform float p_shock;
+uniform float p_notes;
+uniform float p_layout;
+
+const float SHOCK_SPEED = 0.9;
+const float SHOCK_LIFE = 2.0;
+const float NOTE_RADIUS = 0.62;
 
 float field(vec2 p, float t, out vec2 q, out vec2 r) {
   int oct = 4 + int(uBright * 3.0);
@@ -27,8 +36,21 @@ vec2 snareCenter(float index) {
 void main() {
   vec2 uv = centeredUv() + uShake;
   float t = uFlow * 0.25;
+  float rr = length(uv);
+  float spin = mix(1.0, hash11(uSeed * 2.3) < 0.5 ? -1.0 : 1.0, step(0.5, p_layout));
+  vec2 drift = (hash22(vec2(uSeed, 1.7)) - 0.5) * p_layout;
 
   vec2 p = uv * (1.0 - 0.16 * uKick);
+  float shockGlow = 0.0;
+  for (int i = 0; i < 8; i++) {
+    vec2 k = uKickHist[i];
+    if (k.x < 0.0 || k.x > SHOCK_LIFE) continue;
+    float x = rr - (0.05 + k.x * SHOCK_SPEED);
+    float w = 0.015 + k.x * 0.025;
+    float ring = exp(-x * x / (w * w)) * k.y * exp(-k.x * 2.2);
+    p += normalize(uv + 1e-5) * ring * 0.1 * p_shock;
+    shockGlow += ring;
+  }
   float ringGlow = 0.0;
   for (int i = 0; i < 8; i++) {
     vec2 h = uSnareHist[i];
@@ -42,15 +64,17 @@ void main() {
     p += normalize(d + 1e-5) * ring * 0.12 * p_rings;
     ringGlow += ring;
   }
-  p = rot(t * 0.12 + uTimbre.y * 0.6) * p;
+  p = rot(spin * t * 0.12 + uTimbre.y * 0.6) * p;
 
   vec2 q, r;
-  float f = field(p * p_scale, t, q, r);
+  float f = field(p * p_scale + drift * t, t, q, r);
 
   // Cubic shaping keeps most of the frame dark so the bright folds read as structure.
+  // Quiet passages raise the threshold, so the smoke thins out and thickens back when the music swells.
   float shape = f * f * f + 0.6 * f * f + 0.5 * f;
-  float density = smoothstep(0.25, 1.15, shape);
-  float energy = 0.2 + 0.5 * uLoud + 0.2 * uHarm;
+  float density = smoothstep(0.25 + 0.35 * (1.0 - uLoud), 1.15, shape);
+  float specR = spectrum(clamp(rr / 1.5, 0.0, 1.0));
+  float energy = (0.2 + 0.5 * uLoud + 0.2 * uHarm) * (0.35 + 1.3 * specR);
   // Lightness follows density along the palette ramp; hue variety comes from the warp field.
   float tone = 0.45 * length(q) + 0.25 * r.x + 0.15 * uTimbre.x;
   vec3 col = mix(ramp(density * 0.8), palette(tone), p_hueSpread * (1.0 - density)) * density * density * energy * 1.6;
@@ -61,6 +85,20 @@ void main() {
   float core = exp(-length(uv) * (3.5 - uSub));
   col += ramp(0.6) * core * (uKick * 1.4 + uBass * 0.25) * p_glow;
   col += ramp(0.85) * ringGlow * 1.2 * p_rings;
+  // The wavefront lights the smoke it passes through; in empty space it is only a faint line.
+  col += ramp(0.9) * shockGlow * p_shock * (0.08 + 1.4 * density);
+
+  // Notes flare on a clock face: C at twelve o'clock, then clockwise by semitone.
+  for (int i = 0; i < 8; i++) {
+    vec2 n = uNoteHist[i];
+    if (n.x < 0.0 || n.x > 1.5) continue;
+    float pc = uNotePitch[i] >= 0.0 ? uNotePitch[i] : floor(hash11(uNoteCount - float(i)) * 12.0);
+    float ang = PI * 0.5 - pc / 12.0 * TAU;
+    vec2 d = uv - NOTE_RADIUS * vec2(cos(ang), sin(ang));
+    float s = 0.03 + n.x * 0.12;
+    float flare = exp(-dot(d, d) / (s * s)) + 0.25 * exp(-length(d) * 9.0);
+    col += mix(ramp(0.9), palette(pc / 12.0), 0.6) * flare * n.y * exp(-n.x * 2.5) * p_notes * 1.5;
+  }
 
   vec2 g = uv * 26.0;
   vec2 id = floor(g);

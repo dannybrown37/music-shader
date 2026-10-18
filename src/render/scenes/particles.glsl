@@ -3,7 +3,10 @@
 // falls. Snare/clap: a fan of fast, motion-blurred sparks, aimed somewhere new each hit.
 // Hats: glitter that blinks on across the field. Notes: glowing orbs launched from
 // their pitch's place on the circle of fifths (a melody traces a path), coloured by
-// pitch. Timbre steers the dust; bass swells the centre glow.
+// pitch. Timbre steers the dust; bass swells the centre glow. Behind it all a fountain of
+// motes streams up from emitters along the bottom (bass on the left), each emitting at
+// the rate of its band, so the last two seconds float up the screen. Each section can
+// flip the fountain to rain down instead.
 
 uniform float p_embers;
 uniform float p_sparks;
@@ -11,6 +14,12 @@ uniform float p_glitter;
 uniform float p_orbs;
 uniform float p_gravity;
 uniform float p_spread;
+uniform float p_fountain;
+uniform float p_layout;
+
+const float FOUNTAIN_COLS = 40.0;
+const float FOUNTAIN_SLOT = 1.0 / 24.0; // seconds between emissions per column
+const float FOUNTAIN_SPAN = 2.0;        // spectrogram history, see SPECTROGRAM_SPAN_SECONDS
 
 const int EMBERS = 40;
 const int SPARKS = 24;
@@ -38,8 +47,41 @@ float segmentDist(vec2 p, vec2 a, vec2 b) {
   return length(p - a - ab * h);
 }
 
+// Motes are indexed by (column, emission slot), so each one exists at a closed-form
+// position and exports stay frame-exact. A pixel checks the 3×3 nearest motes.
+vec3 fountain(vec2 uv) {
+  float dir = p_layout > 0.5 && hash11(uSeed * 4.7) < 0.5 ? -1.0 : 1.0;
+  float halfW = uResolution.x / uResolution.y;
+  float colW = 2.0 * halfW / FOUNTAIN_COLS;
+  float cx = floor((uv.x + halfW) / colW);
+  float y = uv.y * dir;
+  float slotHere = floor((uTime - (y + 1.05) / 2.1 * FOUNTAIN_SPAN) / FOUNTAIN_SLOT);
+  vec3 acc = vec3(0.0);
+  for (int dc = -1; dc <= 1; dc++) {
+    float c = cx + float(dc);
+    if (c < 0.0 || c >= FOUNTAIN_COLS) continue;
+    for (int ds = -1; ds <= 1; ds++) {
+      float slot = slotHere + float(ds);
+      float age = uTime - slot * FOUNTAIN_SLOT;
+      if (age < 0.0 || age > FOUNTAIN_SPAN) continue;
+      vec2 h = hash22(vec2(c * 1.37, slot * 0.61));
+      float level = spectrogram((c + 0.5) / FOUNTAIN_COLS, age / FOUNTAIN_SPAN);
+      if (h.x > level * level * level * 1.4) continue;
+      float jy = hash11(c * 0.91 + slot * 1.73) - 0.5;
+      float px = -halfW + (c + 0.5 + (h.y - 0.5) * 0.9) * colW + 0.025 * age * sin(age * 3.0 + h.y * TAU);
+      float py = -1.05 + (age + jy * FOUNTAIN_SLOT) / FOUNTAIN_SPAN * 2.1;
+      vec2 d = vec2(uv.x - px, y - py);
+      float size = 0.005 + 0.006 * level;
+      float life = 1.0 - age / FOUNTAIN_SPAN;
+      acc += mix(ramp(0.35 + 0.55 * level), palette((c + 0.5) / FOUNTAIN_COLS * 0.6), 0.3) * exp(-dot(d, d) / (size * size)) * life * (0.4 + level);
+    }
+  }
+  return acc;
+}
+
 void main() {
   vec2 uv = centeredUv() + uShake;
+  vec3 motes = fountain(uv) * p_fountain;
   uv *= 1.0 - 0.04 * uKick;
   uv *= rot(uFlow * 0.015);
   float r = length(uv);
@@ -47,6 +89,7 @@ void main() {
 
   float dust = fbm(uv * 1.3 + uTimbre.xy * 0.6 + vec2(uFlow * 0.02, -uFlow * 0.01), 4);
   col += ramp(0.25) * pow(dust, 3.0) * (0.06 + 0.35 * uHarm);
+  col += motes;
   col += ramp(0.7) * exp(-r * 12.0) * (0.03 + 0.25 * uBass + 0.7 * uKick) * p_embers;
 
   float gravity = 0.45 * p_gravity;

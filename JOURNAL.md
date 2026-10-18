@@ -160,3 +160,58 @@ time and cuts every 4 bars throughout. Raise *Auto VJ: loud above* if that's too
   (one per animation frame), not a build step, so saved presets get thumbnails too.
 - Recording uses MediaRecorder (MP4 if Chrome supports it, else WebM), streamed to a
   file via the save dialog. Not testable headless; needs a check in Windows Chrome.
+
+## 2026-10-18: session 3
+
+**Feedback:** Tunnel is the favourite ("directly visualizes everything that happens");
+Nebula and Terrain are good but not interesting over time; the rest are cool, not awesome.
+
+### Why Tunnel works (the recipe applied to the other scenes)
+
+1. **Every part owns a place**: frequency = angle around the wall, so you can point at the bass.
+2. **History stays visible**: kick rings travel in, so you see the rhythm pattern, not just the current hit.
+3. **All-or-nothing contrast**: tiles are lit or dark, not a little brighter.
+
+### Terrain
+
+- Kick waves (`p_waves`): each kick swells the land and draws a bright front that rolls toward
+  you with the spectrogram, so kicks are laid out on the ground like Tunnel's rings.
+- The sun is a 20-column equalizer (bass on the left).
+- Bass hills and treble peaks get different palette colours; snares flash the whole grid.
+- Hats run lights down the road dashes (on tracks that have hats).
+- Each section picks a new camera height, offset and roll (`p_camera`; 0 = the old fixed camera).
+  It is a hard cut on the section change.
+
+### Nebula
+
+- Quiet passages raise the density threshold, so the smoke thins to wisps and fills in when it gets loud.
+- The spectrum runs outward from the core (bass centre, highs at the rim).
+- Kick shockwaves (`p_shock`) expand from the core and push the smoke. They light the smoke they
+  pass through and are only faint in empty space; the first try glowed everywhere and stacked into a target.
+- Note flares (`p_notes`) on a clock face by pitch class (C at twelve o'clock).
+- Each section picks a new drift direction and spin (`p_layout`), also a hard cut.
+
+Before/after stills: `out/review/terrain-ab.png`, `out/review/nebula-ab.png` (top row old).
+
+### Orb, Kaleido, Ensemble, Particles (same recipe)
+
+- **Orb** is a spectrogram globe: latitude = frequency, longitude = age measured from the camera
+  (the right-hand limb is now, the face is 1 s ago). LED tiles (`p_tiles`) light per band on a darker
+  body; each section moves the camera and can reverse the orbit (`p_camera`).
+- **Kaleido** is cut into 14 frequency rings (`p_bands`), lit or dimmed by their band; unlit rings dim
+  further when quiet. Kick shockwaves (`p_shock`) push and light the crystal. Each section changes the
+  fold count by -4..+2 and nudges the kaliset constant (`p_layout`).
+- **Ensemble** is scaled up 25% and gains a history field outside the note wheel (`p_history`):
+  the mirrored spectrum layout, age growing with radius, as lit cells.
+- **Particles** gains a spectrum fountain (`p_fountain`): 40 emitter columns, one mote per column every
+  1/24 s, kept only if its band was loud at emission (from the spectrogram), so it stays frame-exact.
+  Each pixel checks the 3×3 nearest motes. Each section can flip it to rain down (`p_layout`).
+  First render used half the frame width (aspect bug) and looked like a grid; fixed with y jitter
+  and a cubic level threshold.
+
+Before/after: `out/review/{orb,kaleido,ensemble,particles}-ab.png`.
+
+### Not checked
+
+- Real-time frame rate. Orb, Terrain and Particles now do more per pixel (spectrogram lookups in the
+  raymarch, kick loops in the terrain height, 9 motes per pixel).

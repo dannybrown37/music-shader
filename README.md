@@ -45,13 +45,13 @@ MUSIC_DIR=~/Music just dev    # use a different folder
 
 | # | Scene | What drives what |
 | --- | --- | --- |
-| 1 | **Nebula** | bass → warp depth · timbre → flow field · kick → zoom punch + core · snare → shockwave rings · hats → sparkles |
-| 2 | **Terrain** | the land *is* the last 2 s of spectrum (bass by the road, highs on far peaks) · kick → sun · snare → grid pulse · hats → stars |
-| 3 | **Orb** | spectrum wrapped by latitude · timbre → lobes + roughness · snare → spikes · kick → shockwave shells · hats → glints |
+| 1 | **Nebula** | spectrum runs out from the core (bass centre, highs at the rim) · loudness → how thick the smoke is · kick → shockwaves that light the smoke · snare → refracting rings · notes → flares on a clock face by pitch · hats → sparkles · each section → new drift |
+| 2 | **Terrain** | the land *is* the last 2 s of spectrum (bass by the road, highs on far peaks) · kick → waves rolling in + sun pulse · sun → equalizer · snare → grid flash · hats → road lights + stars · each section → new camera |
+| 3 | **Orb** | a spectrogram globe: frequency by latitude, the last 2 s sweep across the face as lit tiles · timbre → lobes + roughness · snare → spikes · kick → shockwave shells · hats → glints · each section → new camera |
 | 4 | **Tunnel** | spectrum lights equalizer tiles round the walls · kick → rings rushing in · snare → twist · hats → light streaks · noisy timbre cracks the tiles |
-| 5 | **Kaleido** | timbre reshapes the fractal crystal · bass → zoom · snare → mirror rotation · hats → seam sparks · notes → jewels |
-| 6 | **Ensemble** | one visual voice per part: kick → rings · snare → shards · hats → sparks · harmony → 12-note wheel on the circle of fifths · spectrum → ring · bass → core |
-| 7 | **Particles** | kick → ember bursts · snare → motion-blurred spark fans · hats → glitter · each note → an orb launched from its pitch on the circle of fifths, joined to the previous note (melodies draw constellations) |
+| 5 | **Kaleido** | timbre reshapes the fractal crystal · spectrum → rings lit by band (bass centre) · kick → shockwaves through the crystal · bass → zoom · snare → mirror rotation · hats → seam sparks · notes → jewels · each section → new folds + crystal |
+| 6 | **Ensemble** | one visual voice per part: kick → rings · snare → shards · hats → sparks · harmony → 12-note wheel on the circle of fifths · spectrum → ring, and its last 2 s ripple outward as lit cells · bass → core |
+| 7 | **Particles** | kick → ember bursts · snare → motion-blurred spark fans · hats → glitter · each note → an orb launched from its pitch on the circle of fifths, joined to the previous note (melodies draw constellations) · spectrum → a fountain of motes (bass left) carrying the last 2 s up the screen, flipped by section |
 
 Every scene also gets trails, bloom, chromatic aberration, auto-exposure, grain and
 vignette from the shared post-processing (*Look* folder).
