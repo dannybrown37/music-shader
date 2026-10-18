@@ -1,7 +1,7 @@
 import { estimateTempo, pickDownbeat, trackBeats } from "./beats.ts";
 import { followEnvelope, medianFilter, movingMean, normalizeRange, peakPick, percentile, retain } from "./dsp.ts";
 import type { PeakPickOptions } from "./dsp.ts";
-import { BANDS, bandIndices, compressValue, DETECTORS, EPS, hatGate, HAT, HPSS_FREQ, HPSS_TIME, isNearAny, KICK, NOTE_DRUM_GUARD, REF_FLOOR, rowFlux, SNARE_CRACK, toDb } from "./bands.ts";
+import { BANDS, bandIndices, compressValue, DETECTORS, EPS, hatGate, HAT, HPSS_FREQ, HPSS_TIME, isNearAny, KICK, NOTE_DRUM_GUARD, REF_FLOOR, rowFlux, SNARE_CRACK, SNARE_TONAL_DELAY, snareGate, toDb } from "./bands.ts";
 import type { Detector, Range } from "./bands.ts";
 import { FFT_SIZE, FrameAnalyzer, HOP, MEL_BANDS, MFCC_COUNT, melCenters } from "./frame.ts";
 import { EVENT_KINDS, SCALAR_NAMES } from "./types.ts";
@@ -92,6 +92,14 @@ function detect(odf: Float32Array, fps: number, d: Detector): EventTrack {
     times: Float32Array.from(peaks, (p) => p / fps),
     strengths: Float32Array.from(peaks, (p) => Math.min(1.5, odf[p] / (ref || 1))),
   };
+}
+
+function gateSnares(track: EventTrack, crackTonal: Float32Array, fps: number): EventTrack {
+  const kept = Array.from(track.times, (t, i) => {
+    const f = Math.min(crackTonal.length - 1, Math.round(t * fps) + SNARE_TONAL_DELAY);
+    return { t, s: track.strengths[i] * snareGate(crackTonal[f]) };
+  }).filter((e) => e.s > 0);
+  return { times: Float32Array.from(kept, (e) => e.t), strengths: Float32Array.from(kept, (e) => e.s) };
 }
 
 function smooth(data: Float32Array, radius: number): Float32Array {
@@ -232,6 +240,7 @@ export function analyzeTrack(left: Float32Array, right: Float32Array | null, sam
   const rms = new Float32Array(frames);
   const centroid = new Float32Array(frames);
   const flatness = new Float32Array(frames);
+  const crackTonal = new Float32Array(frames);
   const width = new Float32Array(frames);
   const buf = new Float32Array(FFT_SIZE);
 
@@ -260,6 +269,7 @@ export function analyzeTrack(left: Float32Array, right: Float32Array | null, sam
     rms[f] = analyzer.rms;
     centroid[f] = analyzer.centroid;
     flatness[f] = analyzer.flatness;
+    crackTonal[f] = analyzer.crackTonal;
     width[f] = mid2 > 1e-9 ? Math.min(1, Math.sqrt(side2 / mid2)) : 0;
     if (onProgress && f % 2000 === 0) onProgress((0.7 * f) / frames);
   }
@@ -287,7 +297,7 @@ export function analyzeTrack(left: Float32Array, right: Float32Array | null, sam
 
   const events = {} as Record<EventKind, EventTrack>;
   events.kick = detect(kickOdf, fps, DETECTORS.kick);
-  events.snare = detect(snareOdf, fps, DETECTORS.snare);
+  events.snare = gateSnares(detect(snareOdf, fps, DETECTORS.snare), crackTonal, fps);
   events.hat = detect(hatOdf, fps, DETECTORS.hat);
   events.onset = detect(onsetOdf, fps, DETECTORS.onset);
   const drums = [events.kick.times, events.snare.times, events.hat.times];

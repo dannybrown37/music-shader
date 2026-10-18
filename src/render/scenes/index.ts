@@ -3,6 +3,7 @@ import ensemble from "./ensemble.glsl?raw";
 import kaleido from "./kaleido.glsl?raw";
 import nebula from "./nebula.glsl?raw";
 import orb from "./orb.glsl?raw";
+import particles from "./particles.glsl?raw";
 import terrain from "./terrain.glsl?raw";
 import tunnel from "./tunnel.glsl?raw";
 
@@ -132,6 +133,23 @@ export const SCENES: SceneDef[] = [
     look: { feedback: 0.3, feedbackZoom: 0.003, feedbackSpin: 0, bloom: 1.3, bloomThreshold: 0.55, vignette: 0.8 },
     palette: "Synthwave",
     exposureKey: 0.004,
+  },
+  {
+    id: "particles",
+    name: "Particles",
+    description: "Each part throws its own particles: kick embers, snare sparks, hat glitter, note orbs placed by pitch",
+    source: particles,
+    params: [
+      { key: "embers", label: "Kick embers", min: 0, max: 3, value: 1 },
+      { key: "sparks", label: "Snare sparks", min: 0, max: 3, value: 1 },
+      { key: "glitter", label: "Hat glitter", min: 0, max: 3, value: 1 },
+      { key: "orbs", label: "Note orbs", min: 0, max: 3, value: 1 },
+      { key: "gravity", label: "Gravity", min: -1, max: 3, value: 1 },
+      { key: "spread", label: "Burst speed", min: 0.2, max: 2.5, value: 1 },
+    ],
+    look: { feedback: 0.6, feedbackZoom: 0.004, feedbackSpin: 0, bloom: 1.3, bloomThreshold: 0.55 },
+    palette: "Ember",
+    exposureKey: 0.006,
   },
 ];
 

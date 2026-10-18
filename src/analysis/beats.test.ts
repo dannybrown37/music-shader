@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { estimateTempo, pickDownbeat, trackBeats } from "./beats.ts";
+import { estimateTempo, pickDownbeat, scaleBeats, trackBeats } from "./beats.ts";
+import type { EventTrack } from "./types.ts";
 
 const FPS = 86;
 
@@ -53,5 +54,33 @@ describe("pickDownbeat", () => {
 
   it("defaults to 0 with no information", () => {
     expect(pickDownbeat([])).toBe(0);
+  });
+});
+
+describe("scaleBeats", () => {
+  const track = (times: number[]): EventTrack => ({ times: Float32Array.from(times), strengths: Float32Array.from(times, () => 1) });
+  const range = (n: number, step = 1): number[] => Array.from({ length: n }, (_, i) => i * step);
+  const beats = track(range(17));
+  const downbeats = track([1, 5, 9, 13]);
+
+  it.each([
+    [1, range(17), [1, 5, 9, 13]],
+    [2, range(33, 0.5), [1, 3, 5, 7, 9, 11, 13, 15]],
+    [0.5, [1, 3, 5, 7, 9, 11, 13, 15], [1, 9]],
+  ] as const)("factor %f gives the expected beat and bar grid", (factor, wantBeats, wantDown) => {
+    const out = scaleBeats(beats, downbeats, factor);
+    expect(Array.from(out.beat.times)).toEqual(wantBeats);
+    expect(Array.from(out.downbeat.times)).toEqual(wantDown);
+  });
+
+  it("makes inserted half-beats weaker than the real beats", () => {
+    const out = scaleBeats(beats, downbeats, 2);
+    expect(out.beat.strengths[1]).toBeLessThan(out.beat.strengths[0]);
+  });
+
+  it.each([0.5, 2] as const)("copes with no beats at factor %f", (factor) => {
+    const out = scaleBeats(track([]), track([]), factor);
+    expect(out.beat.times.length).toBe(0);
+    expect(out.downbeat.times.length).toBe(0);
   });
 });

@@ -57,6 +57,11 @@ export class LiveInput {
     return this.analyzer.time + Math.min(0.05, (performance.now() - this.lastChunkAt) / 1000);
   }
 
+  /** Also send the input audio to `node` (e.g. a recorder); it isn't played to the speakers. */
+  connect(node: AudioNode): void {
+    this.source.connect(node);
+  }
+
   stop(): void {
     this.source.disconnect();
     this.node.port.onmessage = null;

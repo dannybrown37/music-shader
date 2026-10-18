@@ -1,9 +1,9 @@
 import { estimateTempo } from "./beats.ts";
-import { BANDS, bandIndices, compressValue, DETECTORS, EPS, hatGate, HAT, HPSS_FREQ, HPSS_TIME, isNearAny, KICK, NOTE_DRUM_GUARD, REF_FLOOR, rowFlux, SNARE_CRACK, toDb } from "./bands.ts";
+import { BANDS, bandIndices, compressValue, DETECTORS, EPS, hatGate, HAT, HPSS_FREQ, HPSS_TIME, isNearAny, KICK, NOTE_DRUM_GUARD, REF_FLOOR, rowFlux, SNARE_CRACK, SNARE_TONAL_DELAY, snareGate, toDb } from "./bands.ts";
 import type { DetectorName } from "./bands.ts";
 import { retain } from "./dsp.ts";
 import { FFT_SIZE, FrameAnalyzer, HOP, MEL_BANDS, melCenters } from "./frame.ts";
-import { energyRate, eventState } from "./sampler.ts";
+import { dominantPitch, energyRate, eventState, notePitchState } from "./sampler.ts";
 import type { Features } from "./sampler.ts";
 import { EVENT_KINDS, SCALAR_NAMES } from "./types.ts";
 import type { EventKind, EventTrack, ScalarName } from "./types.ts";
@@ -50,13 +50,18 @@ class GrowingTrack {
   times: number[] = [];
   strengths: number[] = [];
   private cache: EventTrack | null = null;
+  private readonly cap: number;
+
+  constructor(cap: number) {
+    this.cap = cap;
+  }
 
   add(t: number, s: number): void {
     this.times.push(t);
     this.strengths.push(s);
-    if (this.times.length > MAX_EVENTS) {
-      this.times.splice(0, this.times.length - MAX_EVENTS);
-      this.strengths.splice(0, this.strengths.length - MAX_EVENTS);
+    if (this.times.length > this.cap) {
+      this.times.splice(0, this.times.length - this.cap);
+      this.strengths.splice(0, this.strengths.length - this.cap);
     }
     this.cache = null;
   }
@@ -133,7 +138,12 @@ export class LiveAnalyzer {
   private readonly bands: Record<"kick" | "crack" | "hat" | "all", number[]>;
   private readonly bandGroups: [ScalarName, number[]][];
   private readonly pickers: Record<DetectorName, LivePeakPicker>;
-  private readonly tracks = Object.fromEntries(EVENT_KINDS.map((k) => [k, new GrowingTrack()])) as Record<EventKind, GrowingTrack>;
+  /** Sections and downbeats keep their whole history: Auto VJ counts them from the start. */
+  private readonly tracks = Object.fromEntries(EVENT_KINDS.map((k) => [k, new GrowingTrack(k === "section" || k === "downbeat" ? Infinity : MAX_EVENTS)])) as Record<EventKind, GrowingTrack>;
+  private readonly downbeatIntensity: number[] = [];
+  /** Pitch class of each note in tracks.note, kept the same length. */
+  private readonly notePitches: number[] = [];
+  private downbeatCache: { times: Float32Array; intensity: Float32Array } | null = null;
 
   private readonly pulse: Float32Array;
   private pulseCount = 0;
@@ -144,6 +154,9 @@ export class LiveAnalyzer {
   private tempoCandidate = 0;
   private tempoVotes = 0;
   private readonly pendingNotes: [number, number][] = [];
+  /** Snare candidates [frame, time, strength] waiting SNARE_TONAL_DELAY frames for their tonality. */
+  private readonly pendingSnares: [number, number, number][] = [];
+  private readonly crackTonal = new Float32Array(8);
 
   private readonly ranges = new Map<string, AdaptiveRange>();
   private readonly values = Object.fromEntries(SCALAR_NAMES.map((n) => [n, 0])) as Record<ScalarName, number>;
@@ -212,6 +225,11 @@ export class LiveAnalyzer {
     return this.tracks.section.track.times;
   }
 
+  downbeats(): { times: Float32Array; intensity: Float32Array } {
+    this.downbeatCache ??= { times: this.tracks.downbeat.track.times, intensity: Float32Array.from(this.downbeatIntensity) };
+    return this.downbeatCache;
+  }
+
   eventTimes(kind: EventKind): Float32Array {
     return this.tracks[kind].track.times;
   }
@@ -231,6 +249,7 @@ export class LiveAnalyzer {
     this.time = t;
     const n = this.frames++;
     this.frame.process(this.window);
+    this.crackTonal[n % this.crackTonal.length] = this.frame.crackTonal;
     const power = this.frame.melPower;
 
     this.history.set(power, (n % HPSS_TIME) * MEL_BANDS);
@@ -288,15 +307,29 @@ export class LiveAnalyzer {
       const picker = this.pickers[name];
       pulse += Math.min(1.5, odf[name] / picker.reference);
       const strength = picker.push(odf[name]);
-      if (strength > 0) {
-        this.tracks[name].add(eventTime, strength);
-        if (name === "onset") this.pendingNotes.push([eventTime, strength]);
-        if (name === "kick" || name === "snare" || name === "onset") this.nudgeBeat(eventTime, strength);
+      if (strength <= 0) continue;
+      if (name === "snare") {
+        this.pendingSnares.push([n - LOOKAHEAD, eventTime, strength]);
+        continue;
       }
+      this.tracks[name].add(eventTime, strength);
+      if (name === "onset") this.pendingNotes.push([eventTime, strength]);
+      if (name === "kick" || name === "onset") this.nudgeBeat(eventTime, strength);
     }
     this.pulse[n % this.pulse.length] = pulse;
     this.pulseCount = n + 1;
+    this.settleSnares(n);
     this.settleNotes(eventTime);
+  }
+
+  private settleSnares(n: number): void {
+    while (this.pendingSnares.length > 0 && this.pendingSnares[0][0] + SNARE_TONAL_DELAY <= n) {
+      const [frame, t, s] = this.pendingSnares.shift() as [number, number, number];
+      const kept = s * snareGate(this.crackTonal[(frame + SNARE_TONAL_DELAY) % this.crackTonal.length]);
+      if (kept <= 0) continue;
+      this.tracks.snare.add(t, kept);
+      this.nudgeBeat(t, kept);
+    }
   }
 
   /** An onset becomes a note once the drum guard window has passed with no drum hit near it. */
@@ -304,7 +337,11 @@ export class LiveAnalyzer {
     const drums = [this.tracks.kick.times, this.tracks.snare.times, this.tracks.hat.times];
     while (this.pendingNotes.length > 0 && this.pendingNotes[0][0] < now - NOTE_DRUM_GUARD) {
       const [t, s] = this.pendingNotes.shift() as [number, number];
-      if (!isNearAny(t, drums, NOTE_DRUM_GUARD)) this.tracks.note.add(t, s);
+      if (isNearAny(t, drums, NOTE_DRUM_GUARD)) continue;
+      // The note settles ~40 ms after its onset, so the current chroma is already the note's.
+      this.tracks.note.add(t, s);
+      this.notePitches.push(dominantPitch(this.chroma));
+      if (this.notePitches.length > this.tracks.note.times.length) this.notePitches.shift();
     }
   }
 
@@ -337,7 +374,11 @@ export class LiveAnalyzer {
       const slot = this.beatCount % 4;
       const hit = Math.abs(lastKick - beat) < 0.08 ? kicks.strengths[kicks.strengths.length - 1] : 0;
       this.downWeights[slot] = this.downWeights[slot] * 0.9 + hit;
-      if (slot === this.downWeights.indexOf(Math.max(...this.downWeights))) this.tracks.downbeat.add(beat, 1);
+      if (slot === this.downWeights.indexOf(Math.max(...this.downWeights))) {
+        this.tracks.downbeat.add(beat, 1);
+        this.downbeatIntensity.push(this.values.intensity);
+        this.downbeatCache = null;
+      }
       this.lastBeat = beat;
       this.beatCount++;
       this.nextBeat += period;
@@ -460,6 +501,7 @@ export class LiveAnalyzer {
     out.chroma.set(this.chroma);
     out.energyTime = this.energyTime + Math.max(0, t - this.time) * energyRate(this.values.loudness, this.values.percussive);
     for (const kind of EVENT_KINDS) eventState(this.tracks[kind].track, t, decays[kind], kind, out);
+    notePitchState(this.notePitches, out);
     out.tempo = this.tempo || 120;
     const period = 60 / out.tempo;
     if (Number.isNaN(this.lastBeat)) {

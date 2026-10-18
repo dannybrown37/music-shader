@@ -62,6 +62,23 @@ export function hatGate(hatRise: number, crackRise: number): number {
   return Math.min(1, Math.max(0, (share - HAT_SHARE_MIN) / HAT_SHARE_RAMP));
 }
 
+/**
+ * Piano hammers, plucks and synth stabs make sharp 1–5 kHz attacks too. What sets a
+ * snare apart is that its new energy is noise, so the fine spectral structure changes
+ * between frames; a struck note keeps its harmonic peaks. `FrameAnalyzer.crackTonal`
+ * measures that. Measured on the library: snares score mostly < 0.5, piano 0.6–0.9.
+ * The score is read SNARE_TONAL_DELAY frames after the snare's peak, once the attack
+ * has passed.
+ */
+export const SNARE_TONAL_DELAY = 3;
+const SNARE_TONAL_FULL = 0.6;
+const SNARE_TONAL_NONE = 0.75;
+
+/** Fraction 0..1 of a snare candidate's strength to keep, given its crack tonality. */
+export function snareGate(tonal: number): number {
+  return Math.min(1, Math.max(0, (SNARE_TONAL_NONE - tonal) / (SNARE_TONAL_NONE - SNARE_TONAL_FULL)));
+}
+
 export interface Detector {
   /** Seconds between two events of this kind. */
   minGap: number;

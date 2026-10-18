@@ -117,6 +117,42 @@ export function melody(seconds: number, noteSeconds = 0.4, sr = SR): { audio: Fl
   return { audio, notes };
 }
 
+/**
+ * Struck notes like a piano: a click of hammer noise, then rich slightly-stretched
+ * harmonics that decay. Sharp 1–5 kHz attacks, but tonal ones; returns note start times.
+ */
+export function piano(seconds: number, noteSeconds = 0.5, sr = SR): { audio: Float32Array; notes: number[] } {
+  const audio = pad(seconds, 0.03, sr);
+  const chords = [
+    [261.63, 329.63, 392.0],
+    [220.0, 261.63, 329.63],
+    [349.23, 440.0, 523.25],
+    [392.0, 493.88, 587.33],
+  ];
+  const r = rng(7);
+  const notes: number[] = [];
+  for (let i = 0; 0.5 + (i + 1) * noteSeconds < seconds; i++) {
+    const start = 0.5 + i * noteSeconds;
+    notes.push(start);
+    const s0 = Math.round(start * sr);
+    const n = Math.round(1.2 * sr);
+    for (const f of chords[i % chords.length]) {
+      for (let h = 1; h <= 16; h++) {
+        const fh = 2 * f * h * Math.sqrt(1 + 0.0004 * h * h);
+        if (fh > 8000) break;
+        const amp = (0.12 / h ** 0.7) * (1 + (h % 3 === 0 ? 0.3 : 0));
+        const decay = 0.9 / (1 + 0.25 * h);
+        for (let k = 0; k < n && s0 + k < audio.length; k++) {
+          const t = k / sr;
+          audio[s0 + k] += amp * Math.min(1, t / 0.006) * Math.exp(-t / decay) * Math.sin(2 * Math.PI * fh * t);
+        }
+      }
+    }
+    for (let k = 0; k < 0.004 * sr; k++) audio[s0 + k] += 0.04 * (r() * 2 - 1) * Math.exp(-k / sr / 0.001);
+  }
+  return { audio, notes };
+}
+
 export interface DrumPattern {
   audio: Float32Array;
   kicks: number[];

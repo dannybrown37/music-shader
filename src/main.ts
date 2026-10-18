@@ -5,6 +5,8 @@ import { builtinPresets } from "./presets.ts";
 import { PALETTES } from "./render/palettes.ts";
 import { SCENES } from "./render/scenes/index.ts";
 import { mergeSettings } from "./settings.ts";
+import { LiveRecorder } from "./export/recorder.ts";
+import { PresetBrowser } from "./ui/browser.ts";
 import { Panel } from "./ui/panel.ts";
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -54,8 +56,11 @@ async function main(): Promise<void> {
   };
 
   let abort: AbortController | null = null;
+  let browser: PresetBrowser | null = null;
   const panel = new Panel(app, tracks, {
     openFile,
+    browsePresets: () => browser?.toggle(),
+    toggleRecording: () => void toggleRecording(app),
     exportVideo: (opts) => {
       if (!app.player.buffer) {
         showStatus("Load a track first", true);
@@ -100,6 +105,13 @@ async function main(): Promise<void> {
     },
   });
 
+  browser = new PresetBrowser(
+    $("browser"),
+    app,
+    () => panel.presetEntries(),
+    (name) => panel.applyPreset(name),
+  );
+
   const welcome = $("welcome");
   welcome.hidden = false;
   app.onTrackLoaded = (): void => {
@@ -110,7 +122,7 @@ async function main(): Promise<void> {
 
   wireTransport(app);
   wireDragDrop(app);
-  wireKeys(app, panel, openFile);
+  wireKeys(app, panel, browser, openFile);
   wireIdle(app);
   app.start();
 
@@ -176,10 +188,18 @@ function wireDragDrop(app: App): void {
   });
 }
 
-function wireKeys(app: App, panel: Panel, openFile: () => void): void {
+function wireKeys(app: App, panel: Panel, browser: PresetBrowser, openFile: () => void): void {
   window.addEventListener("keydown", (e) => {
     if (e.target instanceof HTMLInputElement && e.target.type !== "range") return;
     const s = app.settings;
+    if (e.key === "b" || e.key === "B") {
+      browser.toggle();
+      return;
+    }
+    if (e.key === "Escape" && browser.isOpen) {
+      browser.close();
+      return;
+    }
     if (e.code === "Space") {
       e.preventDefault();
       void app.togglePlay();
@@ -195,6 +215,8 @@ function wireKeys(app: App, panel: Panel, openFile: () => void): void {
       panel.gui.controllersRecursive().forEach((c) => c.updateDisplay());
     } else if (e.key === "o" || e.key === "O") openFile();
     else if (e.key === "r" || e.key === "R") panel.surprise();
+    else if (e.key === "t" || e.key === "T") panel.cycleTempo();
+    else if (e.key === "c" || e.key === "C") void toggleRecording(app);
     else if (e.key === "p" || e.key === "P") {
       const i = PALETTES.findIndex((p) => p.name === s.palette);
       s.palette = PALETTES[(i + 1) % PALETTES.length].name;
@@ -206,6 +228,29 @@ function wireKeys(app: App, panel: Panel, openFile: () => void): void {
     } else return;
     app.settingsChanged();
   });
+}
+
+let recorder: LiveRecorder | null = null;
+
+/** C: record the canvas and the song audio in real time (scene keys and live input included). */
+async function toggleRecording(app: App): Promise<void> {
+  if (recorder) {
+    const rec = recorder;
+    recorder = null;
+    showStatus(`Saving ${rec.fileName}…`);
+    await rec.stop().then(
+      () => showStatus(`Saved ${rec.fileName} (${Math.round(rec.seconds)} s)`),
+      (err: unknown) => showStatus(`Recording failed: ${String(err)}`, true),
+    );
+    return;
+  }
+  try {
+    recorder = await LiveRecorder.start(app.renderer.canvas, app.recordingAudio(),`${app.settings.overlay.title || "music-shader"} live`);
+    showStatus("● Recording… press C to stop");
+  } catch (err: unknown) {
+    if (err instanceof DOMException && err.name === "AbortError") return;
+    showStatus(`Can't record: ${err instanceof Error ? err.message : String(err)}`, true);
+  }
 }
 
 /** While playing, fades the UI out after a few seconds without input, for clean screen recordings. */

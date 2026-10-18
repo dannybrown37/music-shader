@@ -35,7 +35,7 @@ Export calls the same `renderAt(t, dt)` with exact timestamps.
 src/
   analysis/            pure TypeScript DSP, no DOM; runs in Node tests and the worker
     fft.ts             radix-2 FFT
-    frame.ts           one window → mel, MFCC, chroma, centroid, flatness, rolloff
+    frame.ts           one window → mel, MFCC, chroma, centroid, flatness, rolloff, crackTonal
     bands.ts           detector definitions shared by offline + live (tune drums here)
     track.ts           offline analysis of a whole song → TrackAnalysis
     beats.ts           tempo (autocorrelation + prior) and Ellis DP beat tracking
@@ -52,8 +52,10 @@ src/
     palettes.ts        4-stop gradients, section cycling
     shaders/           common.glsl (shared header), feedback, bloom, luminance, composite
     scenes/            one .glsl per scene + index.ts registry (params, look, palette)
-  ui/                  lil-gui panel, debug HUD, title card
+  ui/                  lil-gui panel, debug HUD, title card, preset browser
   export/video.ts      offline WebCodecs export via mediabunny
+  export/recorder.ts   real-time recording (canvas + audio) via MediaRecorder
+  tempo-memory.ts      per-song tempo ×2/÷2 corrections in localStorage
   settings.ts          every tweakable value with its range (single source of truth)
   presets.ts           built-in presets per scene, localStorage, scene params
 tools/                 Node CLIs: analyze.ts (plots), shot.ts (headless stills/export), palettes.ts
@@ -78,6 +80,9 @@ samples ─► FrameAnalyzer (per frame) ─► mel power [frames × 64]
           7–20 kHz   ─► hat ODF × hat gate (rise must be mostly >7 kHz)
                         │
         peak picking (local max + adaptive mean + floor + min gap)
+                        │
+        snare gate: crackTonal 3 frames later (does the 1–5 kHz fine
+        structure persist? harmonics yes, noise no) drops piano/pluck "snares"
                         ▼
                 kick / snare / hat / onset / note events (time, strength)
 
@@ -106,13 +111,34 @@ the percussive part.
 - `scalars`: 20 continuous values (bands, loudness, brightness, timbre…)
 - `env[kind]`: decaying impulse per event kind (decay set in *Envelope decay*)
 - `recent[kind]`: the last 8 hits as (age, strength), for shockwaves that keep travelling
+- `notePitch`: pitch class of each of those 8 notes (read from chroma 30 ms after the onset)
 - `count`, `since`: event counters (alternate colours per hit, etc.)
 - `beatPhase`, `barPhase`, `tempo`, `energyTime` (a clock that runs faster when busy)
 - `mel` (64 bands), `chroma` (12)
 
 `Reactor.build` (`reactivity.ts`) applies the reactivity gains and produces the uniforms
 listed in `src/render/shaders/common.glsl`. That file is the contract between the
-music side and the shader side.
+music side and the shader side. Before that, `sectionParams` nudges the scene's
+params per section (*Look → New look each section*).
+
+A song's tempo can be corrected ×2 / ÷2 (<kbd>T</kbd>): `App` keeps the cached analysis
+untouched and runs `scaleBeats` (`beats.ts`) over its beat and downbeat tracks, then
+builds a new `FeatureSampler`. The choice is stored per song (`src/tempo-memory.ts`).
+
+## Auto VJ
+
+```
+sections ─┐                    quiet part: crossfade that lands on the section
+downbeats ├─► buildSchedule ─► loud part:  hard cut on the nearest downbeat,
+intensity ┘   (schedule.ts)                plus a cut every N bars on the phrase
+                    │                      grid of the nearest section change
+                    ▼
+             sceneAt(t, events) ─► scene now, scene fading out, mix
+```
+
+Both are pure functions recomputed every frame, so seeking and exporting always agree.
+Live input can't look ahead (a late-detected section would rewrite the past), so it
+keeps its full section/downbeat history and aligns cuts to the previous section only.
 
 ## Rendering
 

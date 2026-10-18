@@ -74,7 +74,7 @@ obviously visible.
 
 1. `just dev`, then `just open` (or browse to http://localhost:5173 in Windows Chrome).
 2. Pick *Haus of You* in the Library, press <kbd>Space</kbd>, press <kbd>D</kbd> for
-   the meters, then <kbd>1</kbd>–<kbd>6</kbd> to flip scenes.
+   the meters, then <kbd>1</kbd>–<kbd>7</kbd> to flip scenes.
 3. Open `src/render/scenes/nebula.glsl` in your editor, change a number, save, and
    watch it hot-reload.
 4. Read TWEAKING.md in order; it goes from panel sliders to writing shaders.
@@ -111,3 +111,52 @@ obviously visible.
   dark→vivid→highlight gradients (`src/render/palettes.ts`, preview with
   `node tools/palettes.ts`). *Mono* and *Ice* are excluded from per-section cycling
   because their white highlights wash out.
+
+## 2026-10-18: session 2
+
+Worked through the **[auto]** items in TODO.md.
+
+### Snare gate (piano no longer fires snares)
+
+- First idea, flatness of the 1–5 kHz *rise*, failed: real noise has half its bins
+  falling, so synthetic snares scored lower than piano.
+- What works: **temporal stability of the fine spectral structure**. Detrend the log
+  spectrum in 1–5 kHz and correlate frame f+3 with f+1 (`FrameAnalyzer.crackTonal`).
+  Harmonics keep their peaks (≈0.7–0.9); noise decorrelates (< 0.5). Linear magnitude
+  was worse (EDM snares spread upward); f vs f+2 was worse (the onset frame mixes old and new notes).
+- `snareGate` keeps a snare below 0.6, drops it at 0.75+. Live waits one extra frame (~12 ms) for snares only.
+- Result: Brahms 62 → 25 snares, Icy Flight 10 → 0, Square Spelunking 69 → 37, Forest (lofi keys) 220 → 156,
+  Haus of You 230 → 224, Neon Street unchanged. `ANALYSIS_VERSION` bumped to 2.
+- Found on the way: a synthetic piano with no bass makes the kick band fire on chord changes
+  (window sidelobe leakage into an empty band, amplified by `REF_FLOOR`). Raising `REF_FLOOR`
+  didn't fix it and moved Corners' tempo, so I reverted; real recordings don't show it (Brahms: 12 kicks).
+
+### Tempo ×2 / ÷2
+
+`scaleBeats` rewrites beats and downbeats (bars stay 4 beats; ÷2 keeps the beats in phase
+with the downbeat). Applied on top of the cached analysis, stored per song by cache key.
+
+### Auto VJ beat cuts
+
+`buildSchedule` turns sections + downbeats + intensity into events. A section in a loud
+part becomes a hard cut snapped to the nearest downbeat; loud stretches get extra cuts
+every N bars **on the phrase grid of the nearest section change** (the first version
+counted from the last cut and put a cut one bar before a drop). Live input doesn't look
+ahead, and now keeps its full section/downbeat history (the 256-event cap would have
+shifted cut positions after ~8 minutes).
+
+Intensity is per-song normalised, so a steady lofi track counts as "loud" most of the
+time and cuts every 4 bars throughout. Raise *Auto VJ: loud above* if that's too busy.
+
+### Particles scene, per-section looks, preset browser, live recording
+
+- Particles is procedural: every particle's position is a closed-form function of its
+  hit's age (ballistic motion with drag), seeded by the hit counter. That keeps exports
+  frame-exact with no particle state. Notes needed new uniforms: `uNoteHist`, `uNotePitch`
+  (pitch class read from chroma 30 ms after the onset, offline and live), `uNoteCount`.
+- First renders clustered in the centre and Brahms showed only a blurry blob; widened the
+  bursts, tightened the core, added the faint pitch wheel and the melody lines.
+- The preset browser renders thumbnails with the real renderer at the current song time
+  (one per animation frame), not a build step, so saved presets get thumbnails too.
+- Recording uses MediaRecorder (MP4 if Chrome supports it, else WebM), streamed to a
+  file via the save dialog. Not testable headless; needs a check in Windows Chrome.

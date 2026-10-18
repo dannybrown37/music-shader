@@ -12,7 +12,13 @@ Ordered from "no code" to "write a shader".
 - **Look**: trails, bloom, exposure, auto-exposure, chromatic aberration, grain,
   vignette, hit flash, camera shake, *render scale* (drop it if a scene stutters).
 - **Palette** plus **New palette each section**: cycles colours at detected section
-  changes.
+  changes. **New look each section** (0–1) also nudges the scene parameters.
+- **Auto VJ**: next scene at each section change; *cut on the beat when loud* hard-cuts
+  on downbeats instead, every *bars between cuts* while intensity stays above *loud above*.
+- **Music → Tempo** (<kbd>T</kbd>): if the beat pulses feel twice too fast or too slow,
+  double or halve the tempo. It's remembered for that song.
+- **Presets → Browse presets** (<kbd>B</kbd>): every preset rendered at the current
+  moment of the song; click one to use it.
 - **Scene parameters**: per-scene knobs (each scene's own `p_*` uniforms).
 - **Presets → Save current as preset** keeps it in the browser; *Download preset JSON*
   gives you a file you can edit, diff or share; *Import* reads one back. Unknown or
@@ -85,6 +91,8 @@ Uniform cheat-sheet (all in `common.glsl`):
 | `uBeatPhase uBarPhase uTempo` | 0..1 through the beat / 4-beat bar |
 | `uFlow` | time that runs faster when the music is busy; use it for motion |
 | `uCount` (kick, snare, hat, section) | counters for per-hit randomness: `hash11(uCount.y)` |
+| `uKickHist[8] uSnareHist[8] uHatHist[8] uNoteHist[8]` | last 8 hits as (age s, strength), newest first; age < 0 = empty |
+| `uNotePitch[8] uNoteCount` | pitch class (C = 0) of each `uNoteHist` note; note counter. See `particles.glsl` |
 | `spectrum(x)` / `spectrogram(x, age)` | mel spectrum 0..1, and its last 2 s |
 | `palette(t)` / `ramp(t)` | cyclic palette / dark→highlight ramp of the current palette |
 
@@ -115,6 +123,9 @@ Everything shared by offline and live analysis is in `src/analysis/bands.ts`:
 - `DETECTORS`: per-detector `floor` (absolute threshold), `delta` (margin above the
   local mean) and `minGap`
 - `hatGate`: how much of a hit's new energy must be above 7 kHz to count as a hat
+- `snareGate` (`SNARE_TONAL_FULL` / `SNARE_TONAL_NONE`): how tonal a 1–5 kHz attack may
+  be and still count as a snare. Raise them if real snares go missing; lower them if
+  piano or plucks still fire snares
 
 Check changes against real songs:
 

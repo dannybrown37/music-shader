@@ -27,6 +27,9 @@ uniform float uBeatPhase, uBarPhase, uTempo;
 uniform vec2 uKickHist[8];
 uniform vec2 uSnareHist[8];
 uniform vec2 uHatHist[8];
+uniform vec2 uNoteHist[8];   // melodic onsets (not drums)
+uniform float uNotePitch[8]; // pitch class of each uNoteHist entry, 0 = C … 11 = B; -1 unknown
+uniform float uNoteCount;    // notes so far: uNoteCount - i identifies uNoteHist[i]
 
 // ---- Textures ----------------------------------------------------------------
 uniform sampler2D uSpectrum;     // 64×1 mel spectrum, low → high

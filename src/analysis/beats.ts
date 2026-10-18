@@ -1,5 +1,7 @@
 /** Global tempo estimate plus Ellis (2007) dynamic-programming beat tracking. */
 
+import type { EventTrack } from "./types.ts";
+
 const MIN_BPM = 60;
 const MAX_BPM = 240;
 const PRIOR_BPM = 120;
@@ -106,4 +108,49 @@ export function pickDownbeat(beatWeights: number[]): number {
   const sums = [0, 0, 0, 0];
   beatWeights.forEach((w, i) => (sums[i % 4] += w));
   return sums.indexOf(Math.max(...sums));
+}
+
+export type TempoFactor = 0.5 | 1 | 2;
+
+/**
+ * Fixes a tempo octave error after the fact: ×2 adds a beat halfway between each pair,
+ * ÷2 keeps every other beat (the ones in phase with the downbeats). Bars stay four beats.
+ */
+export function scaleBeats(beat: EventTrack, downbeat: EventTrack, factor: TempoFactor): { beat: EventTrack; downbeat: EventTrack } {
+  if (factor === 1 || beat.times.length === 0) return { beat, downbeat };
+  const first = downbeat.times.length > 0 ? nearestIndex(beat.times, downbeat.times[0]) : 0;
+  const times: number[] = [];
+  const strengths: number[] = [];
+  let firstDown: number;
+  if (factor === 2) {
+    for (let i = 0; i < beat.times.length; i++) {
+      times.push(beat.times[i]);
+      strengths.push(beat.strengths[i]);
+      if (i + 1 < beat.times.length) {
+        times.push((beat.times[i] + beat.times[i + 1]) / 2);
+        strengths.push(HALF_BEAT_STRENGTH * Math.min(beat.strengths[i], beat.strengths[i + 1]));
+      }
+    }
+    firstDown = 2 * first;
+  } else {
+    for (let i = first % 2; i < beat.times.length; i += 2) {
+      times.push(beat.times[i]);
+      strengths.push(beat.strengths[i]);
+    }
+    firstDown = first >> 1;
+  }
+  const down: number[] = [];
+  for (let i = firstDown % 4; i < times.length; i += 4) down.push(times[i]);
+  return {
+    beat: { times: Float32Array.from(times), strengths: Float32Array.from(strengths) },
+    downbeat: { times: Float32Array.from(down), strengths: Float32Array.from(down, () => 1) },
+  };
+}
+
+const HALF_BEAT_STRENGTH = 0.6;
+
+function nearestIndex(times: Float32Array, t: number): number {
+  let best = 0;
+  for (let i = 1; i < times.length; i++) if (Math.abs(times[i] - t) < Math.abs(times[best] - t)) best = i;
+  return best;
 }

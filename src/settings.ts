@@ -57,15 +57,25 @@ export const LOOK_RANGES = {
 
 export type LookKey = keyof typeof LOOK_RANGES;
 
+export const AUTO_CUT_BARS = [1, 2, 4, 8];
+
 export interface Settings {
   scene: string;
   palette: string;
   /** Advance to the next palette on every detected section change. */
   paletteCycle: boolean;
+  /** 0..1: how far each section change nudges the scene params (0 = never). */
+  sectionLooks: number;
   /** Auto VJ: switch to the next scene at section changes (crossfaded). */
   autoScenes: boolean;
   /** Minimum seconds a scene stays before the next section may switch it. */
   autoSceneSeconds: number;
+  /** Auto VJ: in loud parts, hard-cut on downbeats instead of crossfading. */
+  autoCuts: boolean;
+  /** Intensity 0..1 above which the music counts as loud enough for cuts. */
+  autoCutIntensity: number;
+  /** Bars between cuts while it stays loud: one of AUTO_CUT_BARS. */
+  autoCutBars: number;
   reactivity: Record<ReactivityKey, number>;
   decay: Record<EventKind, number>;
   look: Record<LookKey, number>;
@@ -84,8 +94,12 @@ export function defaultSettings(): Settings {
     scene: "nebula",
     palette: "Ember",
     paletteCycle: true,
+    sectionLooks: 0.3,
     autoScenes: false,
     autoSceneSeconds: 24,
+    autoCuts: true,
+    autoCutIntensity: 0.75,
+    autoCutBars: 4,
     reactivity: { sensitivity: 1, kick: 1, snare: 1, hat: 1, onset: 0.6, bass: 1, timbre: 1, harmony: 0.35, motion: 1 },
     decay: { kick: 0.18, snare: 0.22, hat: 0.07, onset: 0.12, note: 0.3, beat: 0.15, downbeat: 0.5, section: 2.5 },
     look: {
@@ -129,8 +143,12 @@ export function mergeSettings(base: Settings, patch: unknown): Settings {
   if (typeof patch.scene === "string") out.scene = patch.scene;
   if (typeof patch.palette === "string") out.palette = patch.palette;
   if (typeof patch.paletteCycle === "boolean") out.paletteCycle = patch.paletteCycle;
+  if (typeof patch.sectionLooks === "number" && Number.isFinite(patch.sectionLooks)) out.sectionLooks = Math.min(1, Math.max(0, patch.sectionLooks));
   if (typeof patch.autoScenes === "boolean") out.autoScenes = patch.autoScenes;
   if (typeof patch.autoSceneSeconds === "number" && Number.isFinite(patch.autoSceneSeconds)) out.autoSceneSeconds = Math.max(4, patch.autoSceneSeconds);
+  if (typeof patch.autoCuts === "boolean") out.autoCuts = patch.autoCuts;
+  if (typeof patch.autoCutIntensity === "number" && Number.isFinite(patch.autoCutIntensity)) out.autoCutIntensity = Math.min(1, Math.max(0, patch.autoCutIntensity));
+  if (AUTO_CUT_BARS.includes(patch.autoCutBars as number)) out.autoCutBars = patch.autoCutBars as number;
   copyNumbers(out.reactivity, patch.reactivity, false);
   copyNumbers(out.decay, patch.decay, false);
   copyNumbers(out.look, patch.look, false);

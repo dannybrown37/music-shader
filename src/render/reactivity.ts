@@ -4,6 +4,7 @@ import type { Settings } from "../settings.ts";
 import { linearStops, mixStops, paletteByName, paletteForSection } from "./palettes.ts";
 import type { Rgb } from "./palettes.ts";
 import type { UniformValue } from "./gl.ts";
+import type { SceneParam } from "./scenes/index.ts";
 
 /**
  * The mapping layer: turns musical features plus the user's reactivity settings into
@@ -44,11 +45,41 @@ function hash(n: number): number {
   return s - Math.floor(s);
 }
 
+/**
+ * Per-section looks: each section change nudges every scene param by a fixed random
+ * amount (up to `amount` × half its range), so a long video doesn't sit on one look.
+ * Continuous params glide like the palette; stepped ones (fold counts) switch on the change.
+ */
+export function sectionParams(values: Record<string, number>, defs: SceneParam[], f: Features, amount: number): Record<string, number> {
+  const k = f.count.section;
+  if (amount <= 0 || k <= 0) return values;
+  const x = Math.min(1, f.since.section / PALETTE_FADE_SECONDS);
+  const glide = x * x * (3 - 2 * x);
+  const out = { ...values };
+  for (const d of defs) {
+    const base = values[d.key] ?? d.value;
+    const look = (section: number): number => {
+      if (section <= 0) return base;
+      const offset = (hash(section * 7.13 + keySeed(d.key)) * 2 - 1) * amount * 0.5 * (d.max - d.min);
+      return Math.min(d.max, Math.max(d.min, base + offset));
+    };
+    out[d.key] = d.step ? Math.round(look(k) / d.step) * d.step : look(k - 1) + (look(k) - look(k - 1)) * glide;
+  }
+  return out;
+}
+
+function keySeed(key: string): number {
+  let h = 0;
+  for (let i = 0; i < key.length; i++) h = (h * 31 + key.charCodeAt(i)) % 9973;
+  return h;
+}
+
 export class Reactor {
   private readonly u: Record<string, UniformValue> = {};
   private readonly kickHist = new Float32Array(RECENT_COUNT * 2);
   private readonly snareHist = new Float32Array(RECENT_COUNT * 2);
   private readonly hatHist = new Float32Array(RECENT_COUNT * 2);
+  private readonly noteHist = new Float32Array(RECENT_COUNT * 2);
   private readonly count = new Float32Array(4);
   private readonly shake = new Float32Array(2);
   private readonly timbre = new Float32Array(3);
@@ -109,9 +140,13 @@ export class Reactor {
     copyHistory(f.recent.kick, this.kickHist, r.kick * sens);
     copyHistory(f.recent.snare, this.snareHist, r.snare * sens);
     copyHistory(f.recent.hat, this.hatHist, r.hat * sens);
+    copyHistory(f.recent.note, this.noteHist, sens);
     u.uKickHist = this.kickHist;
     u.uSnareHist = this.snareHist;
     u.uHatHist = this.hatHist;
+    u.uNoteHist = this.noteHist;
+    u.uNotePitch = f.notePitch;
+    u.uNoteCount = f.count.note;
 
     const angle = hash(f.count.kick) * Math.PI * 2;
     const amp = 0.025 * s.look.shake * (u.uKick as number);

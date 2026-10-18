@@ -8,6 +8,7 @@
  * --sheet N renders N consecutive frames from --t into one 4-column contact sheet.
  * --export S encodes S seconds from --t to an .mp4 (WebCodecs) instead of taking a screenshot.
  * --ui --live song.wav runs the live-input path with the WAV as a fake microphone (add --hud for meters).
+ * --ui --keys TD presses each character as a key (1.5 s apart) before the screenshot.
  */
 import { spawn } from "node:child_process";
 import { mkdirSync, mkdtempSync, writeFileSync } from "node:fs";
@@ -98,6 +99,7 @@ async function main(): Promise<void> {
       export: { type: "string" },
       live: { type: "string" },
       hud: { type: "boolean", default: false },
+      keys: { type: "string" },
       out: { type: "string", default: "out/shot.png" },
       base: { type: "string", default: "http://127.0.0.1:5173" },
       timeout: { type: "string", default: "240" },
@@ -128,6 +130,11 @@ async function main(): Promise<void> {
       if (values.hud) q.set("hud", "1");
       await cdp.send("Page.navigate", { url: `${values.base}/?${q}` });
       await new Promise((r) => setTimeout(r, Number(values.timeout) * 1000));
+      for (const key of values.keys ?? "") {
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, text: key });
+        await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key });
+        await new Promise((r) => setTimeout(r, 1500));
+      }
       const shot = (await cdp.send("Page.captureScreenshot", { format: "png" })) as { data: string };
       mkdirSync(dirname(values.out), { recursive: true });
       writeFileSync(values.out, Buffer.from(shot.data, "base64"));

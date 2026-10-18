@@ -4,12 +4,16 @@ import type { App } from "../app.ts";
 import { builtinPresets, loadUserPresets, saveUserPresets, sceneParamsFor } from "../presets.ts";
 import { PALETTES } from "../render/palettes.ts";
 import { SCENES, sceneById } from "../render/scenes/index.ts";
-import { DECAY_RANGES, LOOK_RANGES, mergeSettings, REACTIVITY_RANGES } from "../settings.ts";
+import { AUTO_CUT_BARS, DECAY_RANGES, LOOK_RANGES, mergeSettings, REACTIVITY_RANGES } from "../settings.ts";
 import type { Range, Settings } from "../settings.ts";
 import { EXPORT_RESOLUTIONS } from "../export/video.ts";
+import type { TempoFactor } from "../analysis/beats.ts";
+import { nextTempoFactor } from "../tempo-memory.ts";
 
 export interface PanelActions {
   openFile: () => void;
+  browsePresets: () => void;
+  toggleRecording: () => void;
   exportVideo: (opts: { resolution: string; fps: number; start: number; end: number; quality: string }) => void;
 }
 
@@ -20,7 +24,7 @@ export class Panel {
   private sceneFolder: GUI;
   private trackController: Controller | null = null;
   private presetController: Controller | null = null;
-  private readonly state = { track: "", preset: "", saveAs: "My preset" };
+  private readonly state: { track: string; preset: string; saveAs: string; tempo: TempoFactor } = { track: "", preset: "", saveAs: "My preset", tempo: 1 };
   private readonly exportState = { resolution: "1080p", fps: 60, start: 0, end: 0, quality: "very high" };
 
   constructor(app: App, tracks: string[], actions: PanelActions) {
@@ -41,6 +45,10 @@ export class Panel {
     }
     music.add({ open: actions.openFile }, "open").name("Open audio file… (O)");
     music.add({ play: () => void app.togglePlay() }, "play").name("Play / pause (Space)");
+    music
+      .add(this.state, "tempo", { "as detected": 1, "double ×2": 2, "half ÷2": 0.5 })
+      .name("Tempo (T)")
+      .onChange((f: TempoFactor) => app.setTempoFactor(f));
     const live = (kind: "mic" | "tab") => (): void => {
       app.startLive(kind).catch((err: unknown) => app.onStatus(`Live input failed: ${err instanceof Error ? err.message : String(err)}`, true));
     };
@@ -51,6 +59,7 @@ export class Panel {
     const presets = gui.addFolder("Presets");
     this.presetController = presets.add(this.state, "preset", this.presetNames()).name("Load").onChange((name: string) => this.applyPreset(name));
     presets.add(this.state, "saveAs").name("Name");
+    presets.add({ browse: actions.browsePresets }, "browse").name("Browse presets… (B)");
     presets.add({ surprise: () => this.surprise() }, "surprise").name("Surprise me (R)");
     presets.add({ save: () => this.savePreset() }, "save").name("Save current as preset");
     presets.add({ exp: () => this.exportPreset() }, "exp").name("Download preset JSON");
@@ -74,6 +83,9 @@ export class Panel {
         changed();
       });
     gui.add(s, "autoSceneSeconds", 8, 90, 1).name("Auto VJ: min seconds per scene").onChange(changed);
+    gui.add(s, "autoCuts").name("Auto VJ: cut on the beat when loud").onChange(changed);
+    gui.add(s, "autoCutIntensity", 0.3, 1, 0.01).name("Auto VJ: loud above").onChange(changed);
+    gui.add(s, "autoCutBars", AUTO_CUT_BARS).name("Auto VJ: bars between cuts").onChange(changed);
     this.sceneFolder = gui.addFolder("Scene parameters");
     this.buildSceneFolder();
 
@@ -83,6 +95,8 @@ export class Panel {
     const look = gui.addFolder("Look");
     look.add(s, "palette", PALETTES.map((p) => p.name)).name("Palette").onChange(changed);
     look.add(s, "paletteCycle").name("New palette each section").onChange(changed);
+    look.add(s, "sectionLooks", 0, 1, 0.01).name("New look each section").onChange(changed).domElement.title =
+      "How far each section change nudges the scene parameters (0 = never)";
     addRanges(look, s.look, LOOK_RANGES, changed);
     look.close();
 
@@ -110,6 +124,7 @@ export class Panel {
     exp.add(this.exportState, "start", 0, 3600, 0.1).name("Start (s)");
     exp.add(this.exportState, "end", 0, 3600, 0.1).name("End (s, 0 = song end)");
     exp.add({ go: () => actions.exportVideo({ ...this.exportState }) }, "go").name("Render video…");
+    exp.add({ rec: actions.toggleRecording }, "rec").name("Record live, start / stop (C)");
     exp.close();
 
     app.hud.visible = s.overlay.showHud;
@@ -118,8 +133,16 @@ export class Panel {
     if (window.innerWidth < 700) gui.close();
   }
 
+  cycleTempo(): void {
+    this.state.tempo = nextTempoFactor(this.app.tempoFactor);
+    this.app.setTempoFactor(this.state.tempo);
+    this.state.tempo = this.app.tempoFactor;
+    this.gui.controllersRecursive().forEach((c) => c.updateDisplay());
+  }
+
   setTrack(name: string): void {
     this.state.track = name;
+    this.state.tempo = this.app.tempoFactor;
     this.trackController?.updateDisplay();
     this.gui.controllersRecursive().forEach((c) => c.updateDisplay());
   }
@@ -140,7 +163,12 @@ export class Panel {
   }
 
   private presetNames(): string[] {
-    return [...Object.keys(builtinPresets()), ...Object.keys(loadUserPresets()).map((n) => `★ ${n}`)];
+    return this.presetEntries().map(([name]) => name);
+  }
+
+  /** Built-in presets, then saved ones (marked ★), as [display name, settings]. */
+  presetEntries(): [string, Settings][] {
+    return [...Object.entries(builtinPresets()), ...Object.entries(loadUserPresets()).map(([n, s]): [string, Settings] => [`★ ${n}`, s])];
   }
 
   private refreshPresetList(): void {
@@ -163,6 +191,7 @@ export class Panel {
     s.scene = next.scene;
     s.palette = next.palette;
     s.paletteCycle = next.paletteCycle;
+    s.sectionLooks = next.sectionLooks;
     Object.assign(s.reactivity, next.reactivity);
     Object.assign(s.decay, next.decay);
     Object.assign(s.look, next.look);

@@ -10,6 +10,9 @@ const CHROMA_MIN_HZ = 80;
 const CHROMA_MAX_HZ = 5000;
 const FLATNESS_MIN_HZ = 100;
 const FLATNESS_MAX_HZ = 10000;
+const CRACK_MIN_HZ = 1000;
+const CRACK_MAX_HZ = 5000;
+const CRACK_SMOOTH_BINS = 6;
 const EPS = 1e-10;
 
 const hzToMel = (hz: number): number => 2595 * Math.log10(1 + hz / 700);
@@ -81,6 +84,12 @@ export class FrameAnalyzer {
   flatness = 0;
   /** Frequency below which 85% of the energy lies. */
   rolloff = 0;
+  /**
+   * How much the fine spectral structure in the snare band (1–5 kHz) matches two frames
+   * (23 ms) ago, -1..1. Harmonics keep their peaks, so piano and plucks score high;
+   * noise (snare wires, claps) decorrelates, so it scores near 0.
+   */
+  crackTonal = 0;
 
   private readonly fft = new FFT(FFT_SIZE);
   private readonly window = new Float32Array(FFT_SIZE);
@@ -89,6 +98,9 @@ export class FrameAnalyzer {
   private readonly dct = buildDct();
   private readonly binHz: number;
   private readonly magnitudeScale: number;
+  private readonly crackLog: Float32Array;
+  private readonly crackDetail: Float32Array[];
+  private frameCount = 0;
 
   constructor(sampleRate: number) {
     this.sampleRate = sampleRate;
@@ -100,6 +112,9 @@ export class FrameAnalyzer {
     }
     this.magnitudeScale = 2 / windowSum;
     this.filters = buildMelFilters(sampleRate);
+    const crackBins = Math.floor(CRACK_MAX_HZ / this.binHz) - Math.ceil(CRACK_MIN_HZ / this.binHz) + 1;
+    this.crackLog = new Float32Array(crackBins);
+    this.crackDetail = [0, 1, 2].map(() => new Float32Array(crackBins));
   }
 
   /** `samples` must hold exactly FFT_SIZE mono samples. */
@@ -117,6 +132,34 @@ export class FrameAnalyzer {
     this.computeMel();
     this.computeShape();
     this.computeChroma();
+    this.computeCrackTonal();
+  }
+
+  /** Correlates the detrended log spectrum with the one from two frames back (windows overlap 50%, so noise barely correlates). */
+  private computeCrackTonal(): void {
+    const mag = this.magnitude;
+    const lo = Math.ceil(CRACK_MIN_HZ / this.binHz);
+    const n = this.crackDetail[0].length;
+    const log = this.crackLog;
+    for (let i = 0; i < n; i++) log[i] = Math.log(mag[lo + i] + 1e-7);
+    const cur = this.crackDetail[this.frameCount % 3];
+    for (let i = 0; i < n; i++) {
+      let sum = 0;
+      let count = 0;
+      for (let j = Math.max(0, i - CRACK_SMOOTH_BINS); j <= Math.min(n - 1, i + CRACK_SMOOTH_BINS); j++, count++) sum += log[j];
+      cur[i] = log[i] - sum / count;
+    }
+    const old = this.crackDetail[(this.frameCount + 1) % 3];
+    let dot = 0;
+    let a2 = 0;
+    let b2 = 0;
+    for (let i = 0; i < n; i++) {
+      dot += cur[i] * old[i];
+      a2 += cur[i] * cur[i];
+      b2 += old[i] * old[i];
+    }
+    this.crackTonal = this.frameCount >= 2 && a2 > 0 && b2 > 0 ? dot / Math.sqrt(a2 * b2) : 0;
+    this.frameCount++;
   }
 
   private computeMel(): void {

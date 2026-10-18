@@ -14,7 +14,13 @@
     <div id="welcome" hidden>
       <h1>Music Shader</h1>
       <p>Pick a track in the panel, drop an audio file here, or press <kbd>O</kbd> to open one.</p>
-      <p class="keys"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> seek · <kbd>1</kbd>–<kbd>6</kbd> scenes · <kbd>P</kbd> palette · <kbd>R</kbd> surprise · <kbd>D</kbd> debug meters · <kbd>H</kbd> hide UI · <kbd>F</kbd> fullscreen</p>
+      <p class="keys"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> seek · <kbd>1</kbd>–<kbd>7</kbd> scenes · <kbd>P</kbd> palette · <kbd>B</kbd> browse presets · <kbd>R</kbd> surprise · <kbd>T</kbd> tempo ×2/÷2 · <kbd>C</kbd> record · <kbd>D</kbd> debug meters · <kbd>H</kbd> hide UI · <kbd>F</kbd> fullscreen</p>
+    </div>
+    <div id="browser" hidden>
+      <div class="sheet">
+        <header><h2>Presets at this moment of the song</h2><button class="close" type="button" aria-label="Close">✕</button></header>
+        <div class="grid"></div>
+      </div>
     </div>
     <div id="transport">
       <button id="play" type="button" aria-label="Play">▶</button>

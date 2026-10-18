@@ -42,6 +42,25 @@ describe("mergeSettings", () => {
     expect(out.autoSceneSeconds).toBe(seconds);
   });
 
+  it.each([
+    [{ autoCuts: false, autoCutIntensity: 0.5, autoCutBars: 8 }, false, 0.5, 8],
+    [{ autoCutIntensity: 7, autoCutBars: 3 }, true, 1, 4],
+    [{ autoCuts: 1, autoCutIntensity: -1, autoCutBars: "2" }, true, 0, 4],
+  ])("merges beat-cut settings from %j", (patch, cuts, intensity, bars) => {
+    const out = mergeSettings(base, patch);
+    expect(out.autoCuts).toBe(cuts);
+    expect(out.autoCutIntensity).toBe(intensity);
+    expect(out.autoCutBars).toBe(bars);
+  });
+
+  it.each([
+    [{ sectionLooks: 0.8 }, 0.8],
+    [{ sectionLooks: 5 }, 1],
+    [{ sectionLooks: "lots" }, defaultSettings().sectionLooks],
+  ])("merges section look variation from %j", (patch, expected) => {
+    expect(mergeSettings(base, patch).sectionLooks).toBe(expected);
+  });
+
   it("does not mutate the base", () => {
     mergeSettings(base, { reactivity: { kick: 3 } });
     expect(base.reactivity.kick).toBe(defaultSettings().reactivity.kick);

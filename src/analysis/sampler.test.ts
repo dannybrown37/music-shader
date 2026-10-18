@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { createFeatures, FeatureSampler } from "./sampler.ts";
+import { createFeatures, dominantPitch, FeatureSampler } from "./sampler.ts";
 import { EVENT_KINDS, SCALAR_NAMES } from "./types.ts";
 import type { EventKind, TrackAnalysis } from "./types.ts";
 import { MEL_BANDS } from "./frame.ts";
@@ -98,5 +98,26 @@ describe("FeatureSampler", () => {
     sampler.sample(3.5, f, decays);
     expect(Array.from(f.recent.kick.slice(0, 6))).toEqual([0.5, 1, 1.5, 0.5, 2.5, 1]);
     expect(f.recent.kick[6]).toBe(-1);
+  });
+
+  it("gives each recent note the pitch class that sounded just after it, newest first", () => {
+    const a = fakeAnalysis();
+    a.events.note = { times: Float32Array.from([1, 2]), strengths: Float32Array.from([1, 1]) };
+    // Note 1 rings as G (7) from frame 10, note 2 as D (2) from frame 20.
+    for (let fr = 10; fr < 20; fr++) a.chroma[fr * 12 + 7] = 1;
+    for (let fr = 20; fr < 30; fr++) a.chroma[fr * 12 + 2] = 1;
+    const g = createFeatures();
+    new FeatureSampler(a).sample(2.5, g, decays);
+    expect(Array.from(g.notePitch.slice(0, 3))).toEqual([2, 7, -1]);
+  });
+});
+
+describe("dominantPitch", () => {
+  it.each([
+    [[0, 0, 0, 0, 0, 0, 0, 0, 0, 0.9, 0.2, 0], 9],
+    [[0.5, 0, 0, 0, 0, 0, 0, 0.6, 0, 0, 0, 0], 7],
+    [new Array(12).fill(0), -1],
+  ])("of %j is %i", (chroma, expected) => {
+    expect(dominantPitch(chroma)).toBe(expected);
   });
 });

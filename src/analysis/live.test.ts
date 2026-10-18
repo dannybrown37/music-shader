@@ -4,7 +4,7 @@ import { createFeatures } from "./sampler.ts";
 import { MEL_BANDS } from "./frame.ts";
 import { EVENT_KINDS, SCALAR_NAMES } from "./types.ts";
 import type { EventKind } from "./types.ts";
-import { drumPattern, melody, pad, precision, recall, SR } from "./test-signals.ts";
+import { drumPattern, melody, pad, piano, precision, recall, SR } from "./test-signals.ts";
 
 const CHUNK = 1024;
 const TOL = 0.05;
@@ -38,6 +38,14 @@ describe("LiveAnalyzer drums", () => {
     expect(live.tempo).toBeCloseTo(124, -0.5);
   });
 
+  it("reports the intensity at every downbeat for Auto VJ", () => {
+    const { times, intensity } = live.downbeats();
+    expect(times.length).toBeGreaterThan(3);
+    expect(intensity.length).toBe(times.length);
+    for (const v of intensity) expect(v).toBeGreaterThanOrEqual(0);
+    for (const v of intensity) expect(v).toBeLessThanOrEqual(1);
+  });
+
   it("locks beats onto the kicks once the tempo is known", () => {
     const beats = after(ev("beat"), 8);
     expect(beats.length).toBeGreaterThan(10);
@@ -54,6 +62,29 @@ describe("LiveAnalyzer notes", () => {
     expect(precision(found, notes, TOL)).toBeGreaterThan(0.8);
     const drums = feed(drumPattern(124, 8, false).audio);
     expect(after(Array.from(drums.eventTimes("note")), 1.5).length).toBeLessThanOrEqual(3);
+  });
+
+  it("knows the pitch class of each recent melody note", () => {
+    // melody() plays C D E G A C G E (pitch classes 0 2 4 7 9 0 7 4), 0.4 s each from 0.5 s.
+    const { audio, notes } = melody(8);
+    const live = feed(audio);
+    const f = createFeatures();
+    const decays = Object.fromEntries(EVENT_KINDS.map((k) => [k, 0.1])) as Record<EventKind, number>;
+    live.sample(live.time, f, decays);
+    const scale = [0, 2, 4, 7, 9, 0, 7, 4];
+    const found = Array.from(live.eventTimes("note"));
+    const expected = found
+      .slice(-4)
+      .reverse()
+      .map((t) => scale[notes.findIndex((n) => Math.abs(n - t) < TOL) % 8]);
+    expect(Array.from(f.notePitch.slice(0, 4))).toEqual(expected);
+  });
+
+  it("hears struck piano chords as notes, not snares", () => {
+    const { audio, notes } = piano(8);
+    const live = feed(audio);
+    expect(after(Array.from(live.eventTimes("snare")), 1.5).length).toBeLessThanOrEqual(1);
+    expect(recall(after(Array.from(live.eventTimes("note")), 1.5), after(notes, 1.5), TOL)).toBeGreaterThan(0.8);
   });
 });
 

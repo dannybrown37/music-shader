@@ -17,6 +17,8 @@ export interface Features {
   since: Record<EventKind, number>;
   /** RECENT_COUNT pairs of [age seconds, strength], newest first; age -1 marks an empty slot. */
   recent: Record<EventKind, Float32Array>;
+  /** Pitch class 0..11 (C = 0) of each note in recent.note, newest first; -1 when unknown. */
+  notePitch: Float32Array;
   tempo: number;
   /** ∫ (0.8·loudness + 0.4·percussive) dt: a clock that runs faster when the music is busy. */
   energyTime: number;
@@ -39,6 +41,7 @@ export function createFeatures(): Features {
     count: record(EVENT_KINDS, () => 0) as Record<EventKind, number>,
     since: record(EVENT_KINDS, () => Infinity) as Record<EventKind, number>,
     recent: record(EVENT_KINDS, () => new Float32Array(RECENT_COUNT * 2).fill(-1)) as Record<EventKind, Float32Array>,
+    notePitch: new Float32Array(RECENT_COUNT).fill(-1),
     tempo: 120,
     energyTime: 0,
     beatPhase: 0,
@@ -63,6 +66,28 @@ export function lastAtOrBefore(times: Float32Array, t: number): number {
   }
   return ans;
 }
+
+/** Pitch class with the most chroma energy, or -1 for silence. */
+export function dominantPitch(chroma: ArrayLike<number>, offset = 0): number {
+  let best = -1;
+  let max = 1e-6;
+  for (let k = 0; k < 12; k++) {
+    if (chroma[offset + k] > max) {
+      max = chroma[offset + k];
+      best = k;
+    }
+  }
+  return best;
+}
+
+/** Fills out.notePitch to line up with out.recent.note; `pitches` holds one entry per note so far. */
+export function notePitchState(pitches: ArrayLike<number>, out: Features): void {
+  const last = out.count.note - 1;
+  for (let n = 0; n < RECENT_COUNT; n++) out.notePitch[n] = last - n >= 0 && last - n < pitches.length ? pitches[last - n] : -1;
+}
+
+/** Read a note's pitch slightly after its onset, once the attack noise has passed. */
+export const NOTE_PITCH_DELAY = 0.03;
 
 /** Envelope horizon: past this many time constants an event contributes nothing visible. */
 const HORIZON = 6;
@@ -128,6 +153,8 @@ export class FeatureSampler {
   readonly analysis: TrackAnalysis;
   /** Prefix integral of energyRate at each frame boundary, so energyTime is exact after any seek. */
   private readonly energyPrefix: Float64Array;
+  private downbeatCache: { times: Float32Array; intensity: Float32Array } | null = null;
+  private readonly notePitches: Float32Array;
 
   constructor(analysis: TrackAnalysis) {
     this.analysis = analysis;
@@ -138,6 +165,10 @@ export class FeatureSampler {
       const trapezoid = (energyRate(loudness[i], percussive[i]) + energyRate(loudness[j], percussive[j])) / 2;
       this.energyPrefix[i + 1] = this.energyPrefix[i] + trapezoid / analysis.fps;
     }
+    this.notePitches = Float32Array.from(analysis.events.note.times, (t) => {
+      const frame = Math.min(analysis.frames - 1, Math.round((t + NOTE_PITCH_DELAY) * analysis.fps));
+      return dominantPitch(analysis.chroma, frame * 12);
+    });
   }
 
   sample(t: number, out: Features, decays: Record<EventKind, number>): void {
@@ -157,11 +188,22 @@ export class FeatureSampler {
     const rateNow = energyRate(out.scalars.loudness, out.scalars.percussive);
     out.energyTime = this.energyPrefix[i] + ((rateHere + rateNow) / 2) * ((pos - i) / a.fps);
     for (const kind of EVENT_KINDS) eventState(a.events[kind], t, decays[kind], kind, out);
+    notePitchState(this.notePitches, out);
     beatState(a.events.beat.times, a.events.downbeat.times, a.tempo, t, out);
   }
 
   sectionTimes(): Float32Array {
     return this.analysis.events.section.times;
+  }
+
+  /** Downbeat times with the song intensity at each, for Auto VJ's beat-synced cuts. */
+  downbeats(): { times: Float32Array; intensity: Float32Array } {
+    const a = this.analysis;
+    this.downbeatCache ??= {
+      times: a.events.downbeat.times,
+      intensity: Float32Array.from(a.events.downbeat.times, (t) => a.scalars.intensity[Math.min(a.frames - 1, Math.round(t * a.fps))]),
+    };
+    return this.downbeatCache;
   }
 
   /** Fills `out` (rows × MEL_BANDS) with the mel spectrum history: row 0 = t, last row = t - span. */

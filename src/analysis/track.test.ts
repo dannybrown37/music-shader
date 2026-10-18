@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { analyzeTrack } from "./track.ts";
 import type { TrackAnalysis } from "./types.ts";
-import { drumPattern, melody, noise, pad, precision, recall, SR, sine } from "./test-signals.ts";
+import { drumPattern, melody, noise, pad, piano, precision, recall, SR, sine } from "./test-signals.ts";
 
 const TOL = 0.035;
 const cache = new Map<string, TrackAnalysis>();
@@ -60,6 +60,13 @@ describe("analyzeTrack notes", () => {
     const found = Array.from(a.events.note.times);
     expect(recall(found, notes, TOL)).toBeGreaterThan(0.85);
     expect(precision(found, notes, TOL)).toBeGreaterThan(0.85);
+  });
+
+  it("hears struck piano chords as notes, not snares", () => {
+    const { audio, notes } = piano(8);
+    const a = analyzeTrack(audio, null, SR);
+    expect(a.events.snare.times.length).toBeLessThanOrEqual(1);
+    expect(recall(Array.from(a.events.note.times), notes, TOL)).toBeGreaterThan(0.85);
   });
 
   it("does not mistake drum hits for notes", () => {

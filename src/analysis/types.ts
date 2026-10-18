@@ -1,5 +1,5 @@
 /** Bump whenever analysis output changes, so cached analyses (src/audio/cache.ts) are recomputed. */
-export const ANALYSIS_VERSION = 1;
+export const ANALYSIS_VERSION = 2;
 
 /**
  * Continuous per-frame features. All are 0..1 except `timbre*` and `hue*`, which are -1..1.
