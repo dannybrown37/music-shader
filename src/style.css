@@ -1,0 +1,180 @@
+:root {
+  color-scheme: dark;
+  --ui-bg: rgba(10, 10, 14, 0.72);
+  --ui-fg: #e8e6e3;
+  --ui-dim: #8d8a86;
+  --accent: #ff7a45;
+  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+}
+
+[hidden] {
+  display: none !important;
+}
+
+body.still > :not(#view) {
+  display: none !important;
+}
+
+html,
+body {
+  margin: 0;
+  height: 100%;
+  background: #000;
+  overflow: hidden;
+  color: var(--ui-fg);
+}
+
+#view {
+  position: fixed;
+  inset: 0;
+  width: 100vw;
+  height: 100vh;
+  object-fit: contain;
+  display: block;
+  background: #000;
+}
+
+#hud {
+  position: fixed;
+  left: 12px;
+  top: 12px;
+  pointer-events: none;
+}
+
+body.ui-hidden #transport,
+body.ui-hidden .lil-gui.lil-root,
+body.ui-hidden #hud {
+  opacity: 0;
+  pointer-events: none;
+}
+
+body.idle #transport,
+body.idle .lil-gui.lil-root {
+  opacity: 0;
+}
+
+#transport,
+.lil-gui.lil-root {
+  transition: opacity 0.4s;
+}
+
+#transport {
+  position: fixed;
+  left: 50%;
+  bottom: 18px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 14px;
+  width: min(760px, calc(100vw - 40px));
+  box-sizing: border-box;
+  background: var(--ui-bg);
+  backdrop-filter: blur(8px);
+  border-radius: 999px;
+  font-size: 12px;
+  font-variant-numeric: tabular-nums;
+}
+
+#transport button {
+  all: unset;
+  cursor: pointer;
+  width: 28px;
+  height: 28px;
+  border-radius: 50%;
+  display: grid;
+  place-items: center;
+  background: var(--accent);
+  color: #000;
+  font-size: 12px;
+}
+
+#seek {
+  flex: 1;
+  accent-color: var(--accent);
+  min-width: 60px;
+}
+
+#track-name {
+  color: var(--ui-dim);
+  max-width: 34%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#status {
+  position: fixed;
+  left: 50%;
+  top: 18px;
+  transform: translateX(-50%);
+  padding: 8px 16px;
+  background: var(--ui-bg);
+  border-radius: 8px;
+  font-size: 13px;
+  max-width: 80vw;
+  white-space: pre-wrap;
+}
+
+#status.error {
+  color: #ff8a80;
+}
+
+#drop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  font-size: 28px;
+  background: rgba(0, 0, 0, 0.6);
+  border: 3px dashed var(--accent);
+}
+
+#welcome {
+  position: fixed;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  text-align: center;
+  pointer-events: none;
+  text-shadow: 0 2px 12px #000;
+}
+
+#welcome h1 {
+  font-weight: 300;
+  letter-spacing: 0.3em;
+  text-transform: uppercase;
+  font-size: clamp(22px, 5vw, 44px);
+}
+
+#welcome .keys {
+  color: var(--ui-dim);
+  font-size: 13px;
+  line-height: 2;
+}
+
+kbd {
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  margin: 0 1px;
+}
+
+.lil-gui.lil-root {
+  --background-color: rgba(10, 10, 14, 0.82);
+  --title-background-color: rgba(30, 28, 30, 0.9);
+  --number-color: var(--accent);
+  --focus-color: #3a3634;
+  max-height: calc(100vh - 90px);
+  overflow-y: auto;
+}
+
+@media (max-width: 700px) {
+  .lil-gui.lil-root {
+    width: min(260px, 70vw) !important;
+  }
+  #track-name {
+    display: none;
+  }
+}

@@ -1,0 +1,178 @@
+import { MEL_BANDS } from "./frame.ts";
+import { EVENT_KINDS, SCALAR_NAMES } from "./types.ts";
+import type { EventKind, EventTrack, ScalarName, TrackAnalysis } from "./types.ts";
+
+/** How many past events per kind shaders can see (for shockwaves, trails, rings). */
+export const RECENT_COUNT = 8;
+
+/** Everything a visual needs to know about the music at one instant. */
+export interface Features {
+  time: number;
+  scalars: Record<ScalarName, number>;
+  /** Decaying impulse per event kind: jumps to the hit strength, decays exponentially. */
+  env: Record<EventKind, number>;
+  /** Number of events so far, handy for alternating colours or directions per hit. */
+  count: Record<EventKind, number>;
+  /** Seconds since the last event, Infinity before the first. */
+  since: Record<EventKind, number>;
+  /** RECENT_COUNT pairs of [age seconds, strength], newest first; age -1 marks an empty slot. */
+  recent: Record<EventKind, Float32Array>;
+  tempo: number;
+  /** ∫ (0.8·loudness + 0.4·percussive) dt: a clock that runs faster when the music is busy. */
+  energyTime: number;
+  /** 0..1 through the current beat. */
+  beatPhase: number;
+  beatIndex: number;
+  /** 0..1 through the current four-beat bar. */
+  barPhase: number;
+  mel: Float32Array;
+  chroma: Float32Array;
+}
+
+const record = <T>(keys: readonly string[], make: () => T): Record<string, T> => Object.fromEntries(keys.map((k) => [k, make()]));
+
+export function createFeatures(): Features {
+  return {
+    time: 0,
+    scalars: record(SCALAR_NAMES, () => 0) as Record<ScalarName, number>,
+    env: record(EVENT_KINDS, () => 0) as Record<EventKind, number>,
+    count: record(EVENT_KINDS, () => 0) as Record<EventKind, number>,
+    since: record(EVENT_KINDS, () => Infinity) as Record<EventKind, number>,
+    recent: record(EVENT_KINDS, () => new Float32Array(RECENT_COUNT * 2).fill(-1)) as Record<EventKind, Float32Array>,
+    tempo: 120,
+    energyTime: 0,
+    beatPhase: 0,
+    beatIndex: 0,
+    barPhase: 0,
+    mel: new Float32Array(MEL_BANDS),
+    chroma: new Float32Array(12),
+  };
+}
+
+/** Index of the last element <= t, or -1. */
+export function lastAtOrBefore(times: Float32Array, t: number): number {
+  let lo = 0;
+  let hi = times.length - 1;
+  let ans = -1;
+  while (lo <= hi) {
+    const mid = (lo + hi) >> 1;
+    if (times[mid] <= t) {
+      ans = mid;
+      lo = mid + 1;
+    } else hi = mid - 1;
+  }
+  return ans;
+}
+
+/** Envelope horizon: past this many time constants an event contributes nothing visible. */
+const HORIZON = 6;
+
+export function eventState(track: EventTrack, t: number, decay: number, kind: EventKind, out: Features): void {
+  const last = lastAtOrBefore(track.times, t);
+  out.count[kind] = last + 1;
+  out.since[kind] = last >= 0 ? t - track.times[last] : Infinity;
+  let env = 0;
+  for (let i = last; i >= 0; i--) {
+    const age = t - track.times[i];
+    if (age > decay * HORIZON) break;
+    env = Math.max(env, track.strengths[i] * Math.exp(-age / Math.max(decay, 1e-4)));
+  }
+  out.env[kind] = env;
+  const recent = out.recent[kind];
+  for (let n = 0; n < RECENT_COUNT; n++) {
+    const i = last - n;
+    recent[2 * n] = i >= 0 ? t - track.times[i] : -1;
+    recent[2 * n + 1] = i >= 0 ? track.strengths[i] : 0;
+  }
+}
+
+export function beatState(beats: Float32Array, downbeats: Float32Array, tempo: number, t: number, out: Features): void {
+  const fallback = 60 / (tempo > 0 ? tempo : 120);
+  let index: number;
+  let phase: number;
+  if (beats.length < 2) {
+    const pos = t / fallback;
+    index = Math.floor(pos);
+    phase = pos - index;
+  } else {
+    const i = lastAtOrBefore(beats, t);
+    if (i < 0) {
+      const pos = (t - beats[0]) / (beats[1] - beats[0]);
+      index = Math.floor(pos);
+      phase = pos - index;
+    } else if (i >= beats.length - 1) {
+      const n = beats.length;
+      const pos = (t - beats[n - 1]) / (beats[n - 1] - beats[n - 2]);
+      index = n - 1 + Math.floor(pos);
+      phase = pos - Math.floor(pos);
+    } else {
+      index = i;
+      phase = (t - beats[i]) / (beats[i + 1] - beats[i]);
+    }
+  }
+  let downIndex = 0;
+  if (downbeats.length > 0 && beats.length > 0) downIndex = Math.max(0, lastAtOrBefore(beats, downbeats[0] + 1e-4));
+  const inBar = (((index - downIndex) % 4) + 4) % 4;
+  out.beatIndex = index;
+  out.beatPhase = phase;
+  out.barPhase = (inBar + phase) / 4;
+  out.tempo = tempo;
+}
+
+/** Reads a precomputed TrackAnalysis at any time, with envelope decay chosen at sample time. */
+export function energyRate(loudness: number, percussive: number): number {
+  return 0.8 * loudness + 0.4 * percussive;
+}
+
+export class FeatureSampler {
+  readonly analysis: TrackAnalysis;
+  /** Prefix integral of energyRate at each frame boundary, so energyTime is exact after any seek. */
+  private readonly energyPrefix: Float64Array;
+
+  constructor(analysis: TrackAnalysis) {
+    this.analysis = analysis;
+    const { loudness, percussive } = analysis.scalars;
+    this.energyPrefix = new Float64Array(analysis.frames + 1);
+    for (let i = 0; i < analysis.frames; i++) {
+      const j = Math.min(analysis.frames - 1, i + 1);
+      const trapezoid = (energyRate(loudness[i], percussive[i]) + energyRate(loudness[j], percussive[j])) / 2;
+      this.energyPrefix[i + 1] = this.energyPrefix[i] + trapezoid / analysis.fps;
+    }
+  }
+
+  sample(t: number, out: Features, decays: Record<EventKind, number>): void {
+    const a = this.analysis;
+    out.time = t;
+    const pos = Math.max(0, Math.min(a.frames - 1, t * a.fps));
+    const i = Math.floor(pos);
+    const j = Math.min(a.frames - 1, i + 1);
+    const w = pos - i;
+    for (const name of SCALAR_NAMES) {
+      const d = a.scalars[name];
+      out.scalars[name] = d[i] + (d[j] - d[i]) * w;
+    }
+    for (let b = 0; b < MEL_BANDS; b++) out.mel[b] = a.mel[i * MEL_BANDS + b] * (1 - w) + a.mel[j * MEL_BANDS + b] * w;
+    for (let k = 0; k < 12; k++) out.chroma[k] = a.chroma[i * 12 + k] * (1 - w) + a.chroma[j * 12 + k] * w;
+    const rateHere = energyRate(a.scalars.loudness[i], a.scalars.percussive[i]);
+    const rateNow = energyRate(out.scalars.loudness, out.scalars.percussive);
+    out.energyTime = this.energyPrefix[i] + ((rateHere + rateNow) / 2) * ((pos - i) / a.fps);
+    for (const kind of EVENT_KINDS) eventState(a.events[kind], t, decays[kind], kind, out);
+    beatState(a.events.beat.times, a.events.downbeat.times, a.tempo, t, out);
+  }
+
+  sectionTimes(): Float32Array {
+    return this.analysis.events.section.times;
+  }
+
+  /** Fills `out` (rows × MEL_BANDS) with the mel spectrum history: row 0 = t, last row = t - span. */
+  spectrogram(t: number, rows: number, span: number, out: Float32Array): void {
+    const a = this.analysis;
+    for (let r = 0; r < rows; r++) {
+      const pos = Math.max(0, Math.min(a.frames - 1, (t - (r / (rows - 1)) * span) * a.fps));
+      const i = Math.floor(pos);
+      const j = Math.min(a.frames - 1, i + 1);
+      const w = pos - i;
+      for (let b = 0; b < MEL_BANDS; b++) out[r * MEL_BANDS + b] = a.mel[i * MEL_BANDS + b] * (1 - w) + a.mel[j * MEL_BANDS + b] * w;
+    }
+  }
+}

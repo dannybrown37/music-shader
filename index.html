@@ -1,0 +1,29 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Music Shader</title>
+    <link rel="stylesheet" href="/src/style.css" />
+  </head>
+  <body>
+    <canvas id="view"></canvas>
+    <canvas id="hud"></canvas>
+    <div id="drop" hidden>Drop an audio file</div>
+    <div id="status" hidden></div>
+    <div id="welcome" hidden>
+      <h1>Music Shader</h1>
+      <p>Pick a track in the panel, drop an audio file here, or press <kbd>O</kbd> to open one.</p>
+      <p class="keys"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> seek · <kbd>1</kbd>–<kbd>6</kbd> scenes · <kbd>P</kbd> palette · <kbd>R</kbd> surprise · <kbd>D</kbd> debug meters · <kbd>H</kbd> hide UI · <kbd>F</kbd> fullscreen</p>
+    </div>
+    <div id="transport">
+      <button id="play" type="button" aria-label="Play">▶</button>
+      <span id="time">0:00</span>
+      <input id="seek" type="range" min="0" max="1" step="0.001" value="0" aria-label="Seek" />
+      <span id="duration">0:00</span>
+      <span id="track-name"></span>
+    </div>
+    <input id="file" type="file" accept="audio/*" hidden />
+    <script type="module" src="/src/main.ts"></script>
+  </body>
+</html>
