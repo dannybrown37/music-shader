@@ -15,6 +15,8 @@ export interface SceneParam {
   max: number;
   value: number;
   step?: number;
+  /** Kept out of per-section looks: changing it mid-song would re-lay the whole scene at once. */
+  steady?: boolean;
 }
 
 export interface SceneDef {
@@ -174,13 +176,13 @@ export const SCENES: SceneDef[] = [
       { key: "height", label: "Mountain height", min: 0, max: 6, value: 1.6 },
       { key: "grid", label: "Grid glow", min: 0, max: 3, value: 1.2 },
       { key: "sun", label: "Sun", min: 0, max: 2, value: 1 },
-      { key: "road", label: "Road width", min: 0.6, max: 2, value: 1.2 },
+      { key: "road", label: "Road width", min: 1.2, max: 2.4, value: 1.6 },
       { key: "fog", label: "Fog", min: 0, max: 3, value: 1 },
       { key: "stars", label: "Hat stars & road lights", min: 0, max: 3, value: 1 },
       { key: "waves", label: "Kick waves", min: 0, max: 3, value: 1 },
       { key: "camera", label: "Camera moves per section", min: 0, max: 2, value: 0.6 },
       { key: "size", label: "Obstacle size", min: 0.4, max: 2, value: 1 },
-      { key: "shots", label: "Shots between dodges", min: 0, max: 4, value: 1, step: 1 },
+      { key: "shots", label: "Shots between dodges", min: 0, max: 4, value: 1, step: 1, steady: true },
       { key: "lasers", label: "Laser glow", min: 0, max: 3, value: 1 },
       { key: "blast", label: "Explosions", min: 0, max: 3, value: 1 },
     ],

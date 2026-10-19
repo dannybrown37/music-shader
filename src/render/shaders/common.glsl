@@ -24,11 +24,12 @@ uniform float uKick, uSnare, uHat, uOnset, uNote, uBeat, uDownbeat, uSection;
 uniform vec4 uCount;        // events so far: kick, snare, hat, section
 uniform float uBeatPhase, uBarPhase, uTempo;
 // Recent hits, newest first: (age seconds, strength); age < 0 means empty slot.
-uniform vec2 uKickHist[8];
-uniform vec2 uSnareHist[8];
-uniform vec2 uHatHist[8];
-uniform vec2 uNoteHist[8];   // melodic onsets (not drums)
-uniform float uNotePitch[8]; // pitch class of each uNoteHist entry, 0 = C … 11 = B; -1 unknown
+// Scenes mostly loop over the first 8; Gauntlet needs all 16 snares to plan its dodges.
+uniform vec2 uKickHist[16];
+uniform vec2 uSnareHist[16];
+uniform vec2 uHatHist[16];
+uniform vec2 uNoteHist[16];   // melodic onsets (not drums)
+uniform float uNotePitch[16]; // pitch class of each uNoteHist entry, 0 = C … 11 = B; -1 unknown
 uniform float uNoteCount;    // notes so far: uNoteCount - i identifies uNoteHist[i]
 
 // ---- Textures ----------------------------------------------------------------

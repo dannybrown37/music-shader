@@ -93,6 +93,11 @@ describe("sectionParams", () => {
   it("switches stepped params right on the section change", () => {
     expect(sectionParams(values, defs, at(3, 0), 0.5).folds).toBe(sectionParams(values, defs, at(3, 10), 0.5).folds);
   });
+
+  it.each([1, 2, 3, 7])("never moves steady params (section %i)", (section) => {
+    const steady = [...defs, { key: "shots", label: "", min: 0, max: 4, value: 1, step: 1, steady: true }];
+    expect(sectionParams({ ...values, shots: 1 }, steady, at(section, 10), 1).shots).toBe(1);
+  });
 });
 
 describe("Reactor", () => {

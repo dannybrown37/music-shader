@@ -3,7 +3,7 @@ import { EVENT_KINDS, SCALAR_NAMES } from "./types.ts";
 import type { EventKind, EventTrack, ScalarName, TrackAnalysis } from "./types.ts";
 
 /** How many past events per kind shaders can see (for shockwaves, trails, rings). */
-export const RECENT_COUNT = 8;
+export const RECENT_COUNT = 16;
 
 /** Everything a visual needs to know about the music at one instant. */
 export interface Features {

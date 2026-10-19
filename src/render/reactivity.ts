@@ -57,6 +57,7 @@ export function sectionParams(values: Record<string, number>, defs: SceneParam[]
   const glide = x * x * (3 - 2 * x);
   const out = { ...values };
   for (const d of defs) {
+    if (d.steady) continue;
     const base = values[d.key] ?? d.value;
     const look = (section: number): number => {
       if (section <= 0) return base;

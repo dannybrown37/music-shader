@@ -106,34 +106,69 @@ vec3 sky(vec3 rd, float sunPulse) {
 
 // ---- The run: lanes, obstacles, ship ------------------------------------------------
 
+// The dodge plan is mirrored in src/render/gauntlet.ts, where it is tested; keep them in step.
+const int SLOTS = 16;
+const float SPEED = (FAR - NEAR) / HISTORY;
+const float SHIP_NOSE = 0.5;
+const float SHIP_HALF_SPAN = 0.42;
+const float LANE_MARGIN = 0.22;
+const float DEPTH_MARGIN = 0.3;
+const float SLIDE = 0.28;
+const float QUICK = 0.16;
+const float NO_PREDECESSOR = 1e3;
+
 // The ship's lane after obstacle n has passed: constant within a run of p_shots+1 obstacles
 // (those get shot), and always different from one run to the next (the first one is dodged).
 float shipLane(float n) {
-  float b = floor(n / (p_shots + 1.0));
+  float b = floor(n / (floor(p_shots + 0.5) + 1.0));
   return mod(b + floor(b / 3.0), 3.0) - 1.0;
 }
 
 float laneX(float lane) { return lane * p_road * 0.62; }
 
-bool isMine(float n) { return shipLane(n) == shipLane(n - 1.0); }
+float pylonHalfWidth() { return min(max(0.28 * p_size, 0.06), laneX(1.0) - SHIP_HALF_SPAN - LANE_MARGIN); }
+
+// Seconds before (and after) a pylon's arrival that the ship must already be clear of its lane.
+float clearTime() { return (SHIP_NOSE + pylonHalfWidth() + DEPTH_MARGIN) / SPEED; }
 
 float obstacleId(int i) { return uCount.y - 1.0 - float(i); }
 
-vec3 obstacleCenter(float n, float age, float strength) {
+// Seconds since the previous lane change. The obstacles in between are mines, shot before they
+// reach the ship, so only that one can still be in the way. Unknown once it has left the history.
+float gapBefore(int i) {
+  int back = int(floor(p_shots + 0.5)) + 1;
+  if (obstacleId(i) - float(back) < 0.0) return NO_PREDECESSOR;
+  if (i + back >= SLOTS) return 0.0;
+  return uSnareHist[i + back].x - uSnareHist[i].x;
+}
+
+// A lane change with room to slide is a pylon; everything else is a mine to shoot.
+bool gMine[SLOTS];
+
+void setupRun() {
+  float minGap = 2.0 * clearTime() + QUICK;
+  for (int i = 0; i < SLOTS; i++) {
+    float n = obstacleId(i);
+    gMine[i] = shipLane(n) == shipLane(n - 1.0) || gapBefore(i) < minGap;
+  }
+}
+
+vec3 obstacleCenter(float n, bool mine, float age, float strength) {
   float rise = smoothstep(0.0, 0.25, age);
   float x = laneX(shipLane(n - 1.0));
-  if (isMine(n)) return vec3(x, SHIP_Y + 0.05 + 0.06 * sin(age * 9.0 + n), zAtAge(age));
+  if (mine) return vec3(x, SHIP_Y + 0.05 + 0.06 * sin(age * 9.0 + n), zAtAge(age));
   return vec3(x, (0.35 + 0.25 * min(strength, 1.5)) * p_size * rise, zAtAge(age));
 }
 
-vec3 obstacleSize(float n, float age, float strength) {
+vec3 obstacleSize(bool mine, float age, float strength) {
   float rise = smoothstep(0.0, 0.25, age);
-  if (isMine(n)) return vec3(0.2 + 0.06 * min(strength, 1.5)) * p_size * rise;
-  return vec3(0.28, 0.35 + 0.25 * min(strength, 1.5), 0.28) * p_size * vec3(1.0, rise, 1.0);
+  if (mine) return vec3(0.2 + 0.06 * min(strength, 1.5)) * p_size * rise;
+  float w = pylonHalfWidth();
+  return vec3(w, (0.35 + 0.25 * min(strength, 1.5)) * p_size * rise, w);
 }
 
-mat3 obstacleSpin(float n, float age) {
-  if (!isMine(n)) return mat3(1.0);
+mat3 obstacleSpin(float n, bool mine, float age) {
+  if (!mine) return mat3(1.0);
   float a = hash11(n * 1.7) * TAU + age * 2.5;
   float b = 0.6 + age * 1.3;
   mat3 ry = mat3(cos(a), 0.0, sin(a), 0.0, 1.0, 0.0, -sin(a), 0.0, cos(a));
@@ -141,23 +176,47 @@ mat3 obstacleSpin(float n, float age) {
   return rx * ry;
 }
 
-// Lateral position plus the lane-change progress (for banking): slide toward the next
-// obstacle's lane just before it arrives. Only the oldest obstacle not yet passed matters.
-vec2 shipLateral() {
-  float nextAge = -1.0;
-  float nextId = 0.0;
-  for (int i = 0; i < 8; i++) {
-    float age = uSnareHist[i].x;
-    if (age >= 0.0 && age < SHIP_AGE && age > nextAge) {
-      nextAge = age;
-      nextId = obstacleId(i);
-    }
+float blastAge(int i) { return uSnareHist[i].x - BLAST_AGE; }
+
+// Where a mine's blast is now: it drifts toward the camera a little slower than the land.
+vec3 blastCenter(int i) {
+  float age = uSnareHist[i].x;
+  return obstacleCenter(obstacleId(i), true, BLAST_AGE, uSnareHist[i].y) + vec3(0.0, 0.0, -(zAtAge(BLAST_AGE) - zAtAge(age)) * 0.6);
+}
+
+// Light cast on the land by recent explosions.
+vec3 blastLight(vec3 p) {
+  vec3 light = vec3(0.0);
+  for (int i = 0; i < SLOTS; i++) {
+    float since = blastAge(i);
+    if (!gMine[i] || since < 0.0 || since > 0.8) continue;
+    float d = length(p - blastCenter(i));
+    light += palette(0.08 + 0.1 * hash11(obstacleId(i))) * exp(-since * 5.0) / (1.0 + d * d * 3.0);
   }
-  if (nextAge < 0.0) return vec2(laneX(shipLane(uCount.y - 1.0)), 0.0);
-  float from = laneX(shipLane(nextId - 1.0));
-  float to = laneX(shipLane(nextId));
-  float f = smoothstep(SHIP_AGE - 0.45, SHIP_AGE - 0.1, nextAge);
-  return vec2(mix(from, to, f), (to - from) * sin(PI * f));
+  return light * p_blast;
+}
+
+// Lateral position and velocity: the newest lane minus whatever slides are still to come.
+// A pylon's slide ends clearTime before it arrives and starts no earlier than the previous
+// obstacle clearing the tail; lane changes too cramped for that sidestep once the way is clear.
+vec2 shipLateral() {
+  float c = clearTime();
+  float x = laneX(shipLane(uCount.y - 1.0));
+  float v = 0.0;
+  for (int i = 0; i < SLOTS; i++) {
+    float age = uSnareHist[i].x;
+    if (age < 0.0) continue;
+    float n = obstacleId(i);
+    float delta = laneX(shipLane(n)) - laneX(shipLane(n - 1.0));
+    if (delta == 0.0) continue;
+    float gap = gapBefore(i);
+    float lanes = abs(delta) / laneX(1.0);
+    vec2 win = gMine[i] ? vec2(gap - c - QUICK, gap - c) : vec2(c, c + min(SLIDE + 0.1 * (lanes - 1.0), gap - 2.0 * c));
+    float u = clamp((SHIP_AGE - age - win.x) / (win.y - win.x), 0.0, 1.0);
+    x -= delta * u * u * (3.0 - 2.0 * u);
+    v += delta * 6.0 * u * (1.0 - u) / (win.y - win.x);
+  }
+  return vec2(x, v);
 }
 
 vec2 boxHit(vec3 ro, vec3 rd, vec3 he) {
@@ -214,15 +273,16 @@ float raySegmentDist(vec3 ro, vec3 rd, vec3 a, vec3 b, out float t) {
 void main() {
   vec2 uv = centeredUv() + uShake;
   setupKicks();
+  setupRun();
   vec2 lateral = shipLateral();
   vec3 ship = vec3(lateral.x, SHIP_Y + 0.04 * sin(uTime * 2.3) + 0.06 * uKick, SHIP_Z);
-  float roll = -0.55 * lateral.y / max(p_road * 0.62, 0.05) + 0.05 * sin(uTime * 1.7);
+  float roll = clamp(-0.1 * lateral.y, -0.9, 0.9) + 0.05 * sin(uTime * 1.7);
 
   vec3 shot = vec3(hash11(uSeed * 3.1), hash11(uSeed * 5.7), hash11(uSeed * 9.3)) * 2.0 - 1.0;
   float camH = 1.2 + 0.2 * uIntensity - 0.1 * uKick + 0.35 * p_camera * shot.x;
   vec3 ro = vec3(ship.x * 0.6 + 0.25 * p_camera * shot.y, camH, 0.0);
   vec3 rd = normalize(vec3(uv.x, uv.y - 0.2 - 0.08 * p_camera * max(shot.x, 0.0), 1.4 - 0.2 * p_camera * shot.z));
-  rd.xy *= rot(0.03 * sin(uFlow * 0.21) + 0.04 * uTimbre.y + 0.05 * p_camera * shot.z - 0.08 * lateral.y);
+  rd.xy *= rot(0.03 * sin(uFlow * 0.21) + 0.04 * uTimbre.y + 0.05 * p_camera * shot.z - clamp(0.012 * lateral.y, -0.1, 0.1));
 
   vec3 col = sky(rd, uKick);
   float sceneT = 1e9;
@@ -287,19 +347,20 @@ void main() {
     col += ramp(0.9) * road * dash * (0.3 + 2.5 * hatLight * p_stars);
     // The ship's shadow-glow on the road.
     col += palette(0.55) * road * exp(-length((p.xz - ship.xz) * vec2(3.0, 1.6)) * 2.0) * 0.25;
+    col += blastLight(p) * (0.3 + 1.5 * grid);
   }
 
   // ---- Obstacles: pylons to dodge, spinning mines to shoot
   vec3 glow = vec3(0.0);
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < SLOTS; i++) {
     vec2 sn = uSnareHist[i];
     if (sn.x < 0.0 || sn.x > LAST_AGE) continue;
     float n = obstacleId(i);
-    bool mine = isMine(n);
+    bool mine = gMine[i];
     if (mine && sn.x > BLAST_AGE) continue;
-    vec3 c = obstacleCenter(n, sn.x, sn.y);
-    vec3 he = obstacleSize(n, sn.x, sn.y);
-    mat3 spin = obstacleSpin(n, sn.x);
+    vec3 c = obstacleCenter(n, mine, sn.x, sn.y);
+    vec3 he = obstacleSize(mine, sn.x, sn.y);
+    mat3 spin = obstacleSpin(n, mine, sn.x);
     vec3 lro = spin * (ro - c);
     vec3 lrd = spin * rd;
     vec2 bh = boxHit(lro, lrd, he);
@@ -354,14 +415,12 @@ void main() {
   if (tt < sceneT) glow += palette(0.55) * exp(-ed * 90.0) * 0.6;
 
   // ---- Lasers and explosions for every mine in range
-  vec3 nose = ship + vec3(0.0, 0.0, 0.45);
-  for (int i = 0; i < 8; i++) {
+  for (int i = 0; i < SLOTS; i++) {
     vec2 sn = uSnareHist[i];
-    if (sn.x < FIRE_AGE || sn.x > LAST_AGE) continue;
+    if (sn.x < FIRE_AGE || sn.x > LAST_AGE || !gMine[i]) continue;
     float n = obstacleId(i);
-    if (!isMine(n)) continue;
     if (sn.x < BLAST_AGE) {
-      vec3 target = obstacleCenter(n, sn.x, sn.y);
+      vec3 target = obstacleCenter(n, true, sn.x, sn.y);
       float f = (sn.x - FIRE_AGE) / (BLAST_AGE - FIRE_AGE);
       for (int w = 0; w < 2; w++) {
         vec3 muzzle = ship + vec3((float(w) * 2.0 - 1.0) * 0.36 * cos(roll), (float(w) * 2.0 - 1.0) * -0.36 * sin(roll), -0.2);
@@ -378,14 +437,14 @@ void main() {
       continue;
     }
     // Shockwave shell, a white flash, and debris thrown forward with the land.
-    float since = sn.x - BLAST_AGE;
-    vec3 c = obstacleCenter(n, BLAST_AGE, sn.y) + vec3(0.0, 0.0, -(zAtAge(BLAST_AGE) - zAtAge(sn.x)) * 0.6);
+    float since = blastAge(i);
+    vec3 c = blastCenter(i);
     float fade = exp(-since * 2.5);
     float cd = rayPointDist(ro, rd, c, tt);
     if (tt < sceneT + 1.0) {
-      float radius = 0.15 + 1.8 * since * p_size;
-      glow += palette(0.08 + 0.1 * hash11(n)) * exp(-abs(cd - radius) * 18.0) * fade * 2.0 * p_blast;
-      glow += mix(ramp(1.0), palette(0.05), 0.3) * exp(-cd * 3.5) * exp(-since * 6.0) * 4.0 * p_blast;
+      float radius = 0.15 + 1.1 * since * p_size;
+      glow += palette(0.08 + 0.1 * hash11(n)) * exp(-abs(cd - radius) * 18.0) * fade * fade * 2.0 * p_blast;
+      glow += mix(ramp(1.0), palette(0.05), 0.3) * exp(-cd * 4.0) * exp(-since * 7.0) * 2.5 * p_blast;
     }
     for (int k = 0; k < 10; k++) {
       vec3 dir = normalize(hash33(vec3(n, float(k), 3.7)) * 2.0 - 1.0 + vec3(0.0, 0.4, 0.0));
