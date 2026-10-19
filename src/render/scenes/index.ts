@@ -1,5 +1,6 @@
 import type { LookKey } from "../../settings.ts";
 import ensemble from "./ensemble.glsl?raw";
+import gauntlet from "./gauntlet.glsl?raw";
 import kaleido from "./kaleido.glsl?raw";
 import nebula from "./nebula.glsl?raw";
 import orb from "./orb.glsl?raw";
@@ -163,6 +164,29 @@ export const SCENES: SceneDef[] = [
     look: { feedback: 0.6, feedbackZoom: 0.004, feedbackSpin: 0, bloom: 1.3, bloomThreshold: 0.55 },
     palette: "Ember",
     exposureKey: 0.006,
+  },
+  {
+    id: "gauntlet",
+    name: "Gauntlet",
+    description: "Terrain with a ship on the road: every snare drops an obstacle it either dodges or blasts with lasers",
+    source: gauntlet,
+    params: [
+      { key: "height", label: "Mountain height", min: 0, max: 6, value: 1.6 },
+      { key: "grid", label: "Grid glow", min: 0, max: 3, value: 1.2 },
+      { key: "sun", label: "Sun", min: 0, max: 2, value: 1 },
+      { key: "road", label: "Road width", min: 0.6, max: 2, value: 1.2 },
+      { key: "fog", label: "Fog", min: 0, max: 3, value: 1 },
+      { key: "stars", label: "Hat stars & road lights", min: 0, max: 3, value: 1 },
+      { key: "waves", label: "Kick waves", min: 0, max: 3, value: 1 },
+      { key: "camera", label: "Camera moves per section", min: 0, max: 2, value: 0.6 },
+      { key: "size", label: "Obstacle size", min: 0.4, max: 2, value: 1 },
+      { key: "shots", label: "Shots between dodges", min: 0, max: 4, value: 1, step: 1 },
+      { key: "lasers", label: "Laser glow", min: 0, max: 3, value: 1 },
+      { key: "blast", label: "Explosions", min: 0, max: 3, value: 1 },
+    ],
+    look: { feedback: 0.25, feedbackZoom: 0.0, feedbackSpin: 0, bloom: 1.3, bloomThreshold: 0.6, chromatic: 0.8 },
+    palette: "Synthwave",
+    exposureKey: 0.03,
   },
 ];
 

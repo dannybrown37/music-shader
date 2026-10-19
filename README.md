@@ -52,6 +52,7 @@ MUSIC_DIR=~/Music just dev    # use a different folder
 | 5 | **Kaleido** | timbre reshapes the fractal crystal · spectrum → rings lit by band (bass centre) · kick → shockwaves through the crystal · bass → zoom · snare → mirror rotation · hats → seam sparks · notes → jewels · each section → new folds + crystal |
 | 6 | **Ensemble** | one visual voice per part: kick → rings · snare → shards · hats → sparks · harmony → 12-note wheel on the circle of fifths · spectrum → ring, and its last 2 s ripple outward as lit cells · bass → core |
 | 7 | **Particles** | kick → ember bursts · snare → motion-blurred spark fans · hats → glitter · each note → an orb launched from its pitch on the circle of fifths, joined to the previous note (melodies draw constellations) · spectrum → a fountain of motes (bass left) carrying the last 2 s up the screen, flipped by section |
+| 8 | **Gauntlet** | Terrain with a ship on the road · each snare → an obstacle rolling in from the horizon: pylons it slides past, spinning mines it blasts with twin lasers (*Shots between dodges* sets the mix) · kick → land waves + sun pulse · hats → lane lights |
 
 Every scene also gets trails, bloom, chromatic aberration, auto-exposure, grain and
 vignette from the shared post-processing (*Look* folder).
