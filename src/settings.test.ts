@@ -27,6 +27,17 @@ describe("mergeSettings", () => {
     expect(mergeSettings(base, patch)).toEqual(base);
   });
 
+  it.each([
+    [{ overlay: { artMode: "badge", artSize: 1.5, showLyrics: false } }, "badge", 1.5, false],
+    [{ overlay: { artMode: "sticker", artSize: 99 } }, "off", 2, true],
+    [{ overlay: { artMode: 2, artSize: -1, showLyrics: "no" } }, "off", 0.3, true],
+  ])("merges cover art and lyrics settings from %j", (patch, mode, size, lyrics) => {
+    const out = mergeSettings(base, patch);
+    expect(out.overlay.artMode).toBe(mode);
+    expect(out.overlay.artSize).toBe(size);
+    expect(out.overlay.showLyrics).toBe(lyrics);
+  });
+
   it("accepts arbitrary scene param keys since scenes define their own", () => {
     const out = mergeSettings(base, { sceneParams: { nebula: { swirl: 0.4, bad: "x" } } });
     expect(out.sceneParams.nebula).toEqual({ swirl: 0.4 });

@@ -84,6 +84,7 @@ export class Reactor {
   private readonly count = new Float32Array(4);
   private readonly shake = new Float32Array(2);
   private readonly timbre = new Float32Array(3);
+  private readonly timbreSlow = new Float32Array(3);
 
   build(f: Features, s: Settings, sceneParams: Record<string, number>): Record<string, UniformValue> {
     const r = s.reactivity;
@@ -112,11 +113,17 @@ export class Reactor {
     u.uTonal = sc.tonalness;
     u.uWidth = sc.width;
     u.uNovelty = sc.novelty;
+    u.uMelody = level(sc.melody, r.melody);
+    u.uVoice = level(sc.voice, r.melody);
+    u.uPitch = sc.pitch;
     const tg = r.timbre * sens;
-    this.timbre[0] = Math.max(-1.5, Math.min(1.5, sc.timbreX * tg));
-    this.timbre[1] = Math.max(-1.5, Math.min(1.5, sc.timbreY * tg));
-    this.timbre[2] = Math.max(-1.5, Math.min(1.5, sc.timbreZ * tg));
+    const timbre = (v: number): number => Math.max(-1.5, Math.min(1.5, v * tg));
+    this.timbre[0] = timbre(sc.timbreX);
+    this.timbre[1] = timbre(sc.timbreY);
+    this.timbre[2] = timbre(sc.timbreZ);
     u.uTimbre = this.timbre;
+    for (let d = 0; d < 3; d++) this.timbreSlow[d] = timbre(f.timbreSlow[d]);
+    u.uTimbreSlow = this.timbreSlow;
     const key = keyHue(f);
     u.uKeyHue = key.hue;
     u.uKeyStrength = key.strength;

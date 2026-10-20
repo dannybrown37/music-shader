@@ -124,16 +124,52 @@ describe("Reactor", () => {
     expect(u.uNoteCount).toBe(12);
   });
 
+  it.each([
+    [1, 1, 0.6, 0.3],
+    [2, 1, 1.2, 0.6],
+    [1, 3, 1.5, 0.9],
+  ])("scales melody and voice by sensitivity %f and melody gain %f", (sensitivity, gain, melody, voice) => {
+    const f = createFeatures();
+    f.scalars.melody = 0.6;
+    f.scalars.voice = 0.3;
+    f.scalars.pitch = 0.25;
+    const s = defaultSettings();
+    s.reactivity = { ...s.reactivity, sensitivity, melody: gain };
+    const u = new Reactor().build(f, s, {});
+    expect(u.uMelody).toBeCloseTo(melody);
+    expect(u.uVoice).toBeCloseTo(voice);
+    expect(u.uPitch).toBeCloseTo(0.25);
+  });
+
+  it.each([
+    [0.4, 1, 0.4],
+    [0.4, 2, 0.8],
+    [-0.9, 3, -1.5],
+  ])("slow timbre %f at timbre gain %f reaches the shader as %f", (slow, gain, expected) => {
+    const f = createFeatures();
+    f.timbreSlow.set([slow, slow, slow]);
+    const s = defaultSettings();
+    s.reactivity = { ...s.reactivity, sensitivity: 1, timbre: gain };
+    const u = new Reactor().build(f, s, {});
+    Array.from(u.uTimbreSlow as Float32Array).forEach((v) => expect(v).toBeCloseTo(expected));
+  });
+
   it("silences everything audio-driven at zero sensitivity", () => {
     const f = createFeatures();
     f.env.kick = 1;
     f.scalars.bass = 1;
     f.scalars.timbreX = 1;
+    f.timbreSlow[0] = 1;
+    f.scalars.melody = 1;
+    f.scalars.voice = 1;
     const s = defaultSettings();
     s.reactivity = { ...s.reactivity, sensitivity: 0 };
     const u = new Reactor().build(f, s, {});
     expect(u.uKick).toBe(0);
     expect(u.uBass).toBe(0);
     expect((u.uTimbre as Float32Array)[0]).toBe(0);
+    expect((u.uTimbreSlow as Float32Array)[0]).toBe(0);
+    expect(u.uMelody).toBe(0);
+    expect(u.uVoice).toBe(0);
   });
 });

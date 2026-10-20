@@ -1,5 +1,6 @@
 import { MEL_BANDS } from "../analysis/frame.ts";
-import type { Settings } from "../settings.ts";
+import { ART_MODES } from "../settings.ts";
+import type { ArtMode, Settings } from "../settings.ts";
 import { createTarget, DataTexture, deleteTarget, FullscreenTriangle, Program } from "./gl.ts";
 import type { Target, UniformValue } from "./gl.ts";
 import { MAX_SHAPES, TEXELS_PER_SHAPE } from "./mosaic.ts";
@@ -18,6 +19,14 @@ export interface SceneFade {
   /** Weight of the incoming (current) scene, 0..1. */
   mix: number;
 }
+/** What's composited over the scene: opacities of the title card and lyric line, and the cover art mode. */
+export interface Layers {
+  title: number;
+  lyrics: number;
+  art: ArtMode;
+  artSize: number;
+}
+
 const BLOOM_LEVELS = 6;
 const LUM_SIZE = 256;
 const LUM_LEVELS = Math.log2(LUM_SIZE) + 1;
@@ -33,6 +42,8 @@ export class Renderer {
   readonly canvas: HTMLCanvasElement;
   readonly spectrum: DataTexture;
   readonly spectrogram: DataTexture;
+  /** (pitch, melody) per row, same rows as the spectrogram. */
+  readonly melodyLine: DataTexture;
   /** Mosaic's shape records (see mosaic.ts); other scenes don't declare uShapes. */
   readonly shapes: DataTexture;
   private readonly tri: FullscreenTriangle;
@@ -47,6 +58,10 @@ export class Renderer {
   adaptInstantly = false;
   private exposureKey = 0.05;
   private readonly overlayTexture: WebGLTexture;
+  private readonly lyricsTexture: WebGLTexture;
+  private readonly artTexture: WebGLTexture;
+  private artAspect = 0;
+  private hasLyrics = false;
   private readonly scenePrograms = new Map<string, Program>();
   private scene: Program | null = null;
   private sceneTarget: Target | null = null;
@@ -75,11 +90,11 @@ export class Renderer {
     this.resetAdaptation();
     this.spectrum = new DataTexture(gl, MEL_BANDS, 1);
     this.spectrogram = new DataTexture(gl, MEL_BANDS, SPECTROGRAM_ROWS);
+    this.melodyLine = new DataTexture(gl, 2, SPECTROGRAM_ROWS);
     this.shapes = new DataTexture(gl, TEXELS_PER_SHAPE, MAX_SHAPES, true);
-    this.overlayTexture = gl.createTexture();
-    gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
+    this.overlayTexture = createImageTexture(gl, false);
+    this.lyricsTexture = createImageTexture(gl, false);
+    this.artTexture = createImageTexture(gl, true);
   }
 
   /** Compiles on first use; throws ShaderError with line context if the scene doesn't compile. */
@@ -114,12 +129,31 @@ export class Renderer {
   }
 
   setOverlay(image: TexImageSource | null): void {
-    const gl = this.gl;
     this.hasOverlay = image !== null;
-    if (!image) return;
-    gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
+    if (image) this.uploadImage(this.overlayTexture, image, false);
+  }
+
+  setLyrics(image: TexImageSource | null): void {
+    this.hasLyrics = image !== null;
+    if (image) this.uploadImage(this.lyricsTexture, image, false);
+  }
+
+  /** Cover art / logo. Mipmapped, since a large image is usually drawn much smaller. */
+  setArt(image: (TexImageSource & { width: number; height: number }) | null): void {
+    this.artAspect = image && image.height > 0 ? image.width / image.height : 0;
+    if (image) this.uploadImage(this.artTexture, image, true);
+  }
+
+  get hasArt(): boolean {
+    return this.artAspect > 0;
+  }
+
+  private uploadImage(texture: WebGLTexture, image: TexImageSource, mipmaps: boolean): void {
+    const gl = this.gl;
+    gl.bindTexture(gl.TEXTURE_2D, texture);
     gl.pixelStorei(gl.UNPACK_PREMULTIPLY_ALPHA_WEBGL, false);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, gl.RGBA, gl.UNSIGNED_BYTE, image);
+    if (mipmaps) gl.generateMipmap(gl.TEXTURE_2D);
   }
 
   resize(width: number, height: number, renderScale: number): void {
@@ -153,6 +187,7 @@ export class Renderer {
     program.set("uResolution", [target.width, target.height]);
     program.set("uSpectrum", this.spectrum.texture);
     program.set("uSpectrogram", this.spectrogram.texture);
+    program.set("uMelodyLine", this.melodyLine.texture);
     program.set("uPrev", prev.texture);
     program.set("uShapes", this.shapes.texture);
     this.tri.draw(target);
@@ -162,7 +197,7 @@ export class Renderer {
    * `dt` keeps trail length and drift identical whether we draw at 30, 60 or 144 fps.
    * `fadeFrom` renders a second, outgoing scene and crossfades it out (auto-VJ transitions).
    */
-  render(uniforms: Record<string, UniformValue>, look: Settings["look"], overlayAlpha: number, dt: number, fadeFrom?: SceneFade): void {
+  render(uniforms: Record<string, UniformValue>, look: Settings["look"], layers: Layers, dt: number, fadeFrom?: SceneFade): void {
     const frames60 = Math.max(0, dt * 60);
     const scene = this.scene;
     const sceneTarget = this.sceneTarget;
@@ -243,7 +278,14 @@ export class Renderer {
     comp.set("uImage", next.texture);
     comp.set("uBloom", low.texture);
     comp.set("uOverlay", this.overlayTexture);
-    comp.set("uOverlayAlpha", this.hasOverlay ? overlayAlpha : 0);
+    comp.set("uOverlayAlpha", this.hasOverlay ? layers.title : 0);
+    comp.set("uLyrics", this.lyricsTexture);
+    comp.set("uLyricsAlpha", this.hasLyrics ? layers.lyrics : 0);
+    comp.set("uArt", this.artTexture);
+    comp.set("uArtMode", this.hasArt ? ART_MODES.indexOf(layers.art) : 0);
+    comp.set("uArtSize", layers.artSize);
+    comp.set("uArtAspect", this.artAspect || 1);
+    comp.set("uArtPulse", kick);
     comp.set("uResolution", this.size);
     comp.set("uTime", (uniforms.uTime as number) ?? 0);
     // The upsample chain sums every level, so normalise by the level count.
@@ -290,6 +332,18 @@ export class Renderer {
     gl.bindFramebuffer(gl.FRAMEBUFFER, null);
     return Math.exp(px[0]);
   }
+}
+
+/** A 1×1 transparent texture, replaced later by an uploaded image. */
+function createImageTexture(gl: WebGL2RenderingContext, mipmapped: boolean): WebGLTexture {
+  const texture = gl.createTexture();
+  gl.bindTexture(gl.TEXTURE_2D, texture);
+  gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, mipmapped ? gl.LINEAR_MIPMAP_LINEAR : gl.LINEAR);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
+  gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
+  if (mipmapped) gl.generateMipmap(gl.TEXTURE_2D);
+  return texture;
 }
 
 function createMipmappedTarget(gl: WebGL2RenderingContext, size: number): Target {

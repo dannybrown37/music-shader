@@ -22,6 +22,7 @@ export const REACTIVITY_RANGES = {
   bass: { min: 0, max: 3, label: "Bass energy", help: "Warp depth, size, terrain height" },
   timbre: { min: 0, max: 3, label: "Timbre", help: "How far instrument changes move shape and colour" },
   harmony: { min: 0, max: 1, label: "Key → hue", help: "How much the musical key tints the palette" },
+  melody: { min: 0, max: 3, label: "Melody / voice", help: "How bright the melody line and voice glow are" },
   motion: { min: 0, max: 3, label: "Motion speed", help: "Base speed of flow/camera, scaled by loudness" },
 } satisfies Record<string, Range>;
 
@@ -86,8 +87,16 @@ export interface Settings {
     subtitle: string;
     showTitle: boolean;
     showHud: boolean;
+    /** Cover art / logo image (loaded per session): off, a pulsing badge mid-screen, or a dim backdrop. */
+    artMode: ArtMode;
+    artSize: number;
+    showLyrics: boolean;
   };
 }
+
+export const ART_MODES = ["off", "badge", "backdrop"] as const;
+export type ArtMode = (typeof ART_MODES)[number];
+export const ART_SIZE: Range = { min: 0.3, max: 2, label: "Art size" };
 
 export function defaultSettings(): Settings {
   return {
@@ -100,7 +109,7 @@ export function defaultSettings(): Settings {
     autoCuts: true,
     autoCutIntensity: 0.75,
     autoCutBars: 4,
-    reactivity: { sensitivity: 1, kick: 1, snare: 1, hat: 1, onset: 0.6, bass: 1, timbre: 1, harmony: 0.35, motion: 1 },
+    reactivity: { sensitivity: 1, kick: 1, snare: 1, hat: 1, onset: 0.6, bass: 1, timbre: 1, harmony: 0.35, melody: 1, motion: 1 },
     decay: { kick: 0.18, snare: 0.22, hat: 0.07, onset: 0.12, note: 0.3, beat: 0.15, downbeat: 0.5, section: 2.5 },
     look: {
       feedback: 0.0,
@@ -119,7 +128,7 @@ export function defaultSettings(): Settings {
       renderScale: 1,
     },
     sceneParams: {},
-    overlay: { title: "", subtitle: "", showTitle: false, showHud: false },
+    overlay: { title: "", subtitle: "", showTitle: false, showHud: false, artMode: "off", artSize: 1, showLyrics: true },
   };
 }
 
@@ -164,6 +173,9 @@ export function mergeSettings(base: Settings, patch: unknown): Settings {
     if (typeof o.subtitle === "string") out.overlay.subtitle = o.subtitle;
     if (typeof o.showTitle === "boolean") out.overlay.showTitle = o.showTitle;
     if (typeof o.showHud === "boolean") out.overlay.showHud = o.showHud;
+    if (ART_MODES.includes(o.artMode as ArtMode)) out.overlay.artMode = o.artMode as ArtMode;
+    if (typeof o.artSize === "number" && Number.isFinite(o.artSize)) out.overlay.artSize = Math.min(ART_SIZE.max, Math.max(ART_SIZE.min, o.artSize));
+    if (typeof o.showLyrics === "boolean") out.overlay.showLyrics = o.showLyrics;
   }
   return out;
 }

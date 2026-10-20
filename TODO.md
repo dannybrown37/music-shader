@@ -22,7 +22,22 @@ Legend: **[you]** needs you (a real GPU, Windows, or a decision) · **[auto]** I
 - [x] Docs updated; `docs/scenes.png` regenerated with Particles
 - [x] `tools/shot.ts --keys TD`: press keys before a UI screenshot
 
+## Done 2026-10-20, session 4 (details in JOURNAL.md)
+
+- [x] Melody line + voice (vibrato) detection; Tunnel ribbons, Gauntlet sky line
+- [x] Show: per-song cue timeline (K / drag / Del), seeded from Auto VJ
+- [x] Cover art (badge / backdrop), .lrc lyrics, YouTube thumbnail export
+- [x] CI (check + build + shader smoke test), GitHub Pages deploy, share links
+- [x] Tessellate scene (key 0): tile shape from slow timbre, turned by snares; new `uTimbreSlow`
+- [x] `docs/scenes.png` regenerated with all 10 scenes (`just scenes-png`)
+
 ## Still open
+
+- [ ] **[you]** Tessellate (0) in Windows Chrome: frame rate, and whether the shape steps per snare feel right
+- [ ] **[you]** Push to GitHub, enable Pages (Settings → Pages → Source: GitHub Actions), watch CI go green
+- [ ] **[you]** Try a song with real vocals: does *voice* light up? (D meters, or `just analyze`)
+- [ ] **[you]** Drop an image and an .lrc on the page in Windows Chrome; try *Copy share link*
+- [ ] Web MIDI controller mapping and persistent two-scene layering (roadmap item 5, not started)
 
 - [ ] **[auto]** Kick detector fires on note changes when the bass band is otherwise silent (synthetic signals only; real music fine)
 - [ ] More palettes (low value)

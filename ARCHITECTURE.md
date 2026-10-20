@@ -39,6 +39,7 @@ src/
     bands.ts           detector definitions shared by offline + live (tune drums here)
     track.ts           offline analysis of a whole song → TrackAnalysis
     beats.ts           tempo (autocorrelation + prior) and Ellis DP beat tracking
+    pitch.ts           melody line (harmonic summation + Viterbi), vibrato → voice; shared by offline + live
     dsp.ts             percentile, median, smoothing, peak picking
     sampler.ts         TrackAnalysis + time → Features (envelopes, beat phase, history)
     live.ts            causal LiveAnalyzer with the same Features output
@@ -49,16 +50,24 @@ src/
     gl.ts              WebGL2 helpers (programs with auto-typed uniforms, targets)
     renderer.ts        the pass pipeline above
     reactivity.ts      Features + Settings → uniforms (the "mapping layer")
+    schedule.ts        Auto VJ: section/downbeat schedule → scene at t
+    show.ts            hand-placed cues per song → scene, palette, crossfade at t
     palettes.ts        4-stop gradients, section cycling
     shaders/           common.glsl (shared header), feedback, bloom, luminance, composite
     scenes/            one .glsl per scene + index.ts registry (params, look, palette)
-  ui/                  lil-gui panel, debug HUD, title card, preset browser
+  ui/                  lil-gui panel, debug HUD, title card + lyric drawing, preset browser, show timeline
   export/video.ts      offline WebCodecs export via mediabunny
   export/recorder.ts   real-time recording (canvas + audio) via MediaRecorder
+  export/thumbnail.ts  picks the song's most intense moment for the YouTube thumbnail
   tempo-memory.ts      per-song tempo ×2/÷2 corrections in localStorage
+  song-store.ts        per-song shows and lyrics in localStorage (validated on read)
+  lyrics.ts            .lrc parsing and the line on screen at t
+  share.ts             settings ⇄ URL hash for share links
   settings.ts          every tweakable value with its range (single source of truth)
   presets.ts           built-in presets per scene, localStorage, scene params
-tools/                 Node CLIs: analyze.ts (plots), shot.ts (headless stills/export), palettes.ts
+tools/                 Node CLIs: analyze.ts (plots), shot.ts (headless stills/export), smoke.ts (every
+                       scene compiles; CI), chrome.ts (shared headless Chrome driver), palettes.ts
+.github/workflows/     ci.yml (check + build + smoke), pages.yml (deploy to GitHub Pages)
 ```
 
 ## Audio analysis (offline)
@@ -94,6 +103,20 @@ chroma ─► circle-of-fifths vector ─► hueX/Y (key colour)
 [timbre, chroma, intensity] ─► novelty (3 s before vs after) ─► section events
 ```
 
+### Melody and voice (`pitch.ts`)
+
+```
+FFT peaks (80 Hz–5 kHz, bass tilted down)
+   ─► each peak votes for f0 = f/h, h = 1..8 (weight 0.8^(h-1))  ─► salience over A2–C6
+   ─► 5 best candidates per frame + clarity (share of peak energy the best series explains)
+   ─► Viterbi line through the candidates (jumps cost; vibrato-sized moves are free) ─► MIDI pitch
+melody = clarity × sustained share (HPSS)          pitch = MIDI scaled to the song's 5–95% range, held
+voice  = melody × vibrato depth (pitch − running median, low-passed to vibrato rates)
+```
+
+Live uses the same salience; it picks candidates greedily (doubled jump cost) and measures
+vibrato ~85 ms late.
+
 Every continuous feature is normalised **per song** (percentiles), so a quiet
 acoustic track moves the visuals as much as a brickwalled EDM track.
 
@@ -115,6 +138,8 @@ the percussive part.
 - `count`, `since`: event counters (alternate colours per hit, etc.)
 - `beatPhase`, `barPhase`, `tempo`, `energyTime` (a clock that runs faster when busy)
 - `mel` (64 bands), `chroma` (12)
+- `timbreSlow`: timbre averaged over the last second (offline: box average via prefix sums; live: an
+  EMA with the same lag), for scenes whose geometry follows the instrument and shouldn't jump per hit
 
 `Reactor.build` (`reactivity.ts`) applies the reactivity gains and produces the uniforms
 listed in `src/render/shaders/common.glsl`. That file is the contract between the
@@ -137,6 +162,10 @@ intensity ┘   (schedule.ts)                plus a cut every N bars on the phra
 ```
 
 Both are pure functions recomputed every frame, so seeking and exporting always agree.
+
+A **show** (`show.ts`) replaces this when the song has cues and *Play this song's show* is on:
+`showAt(t, cues)` returns the scene, an optional palette override and the crossfade, the same way.
+`App.autoVjCues` turns the Auto VJ schedule into cues as a starting point.
 Live input can't look ahead (a late-detected section would rewrite the past), so it
 keeps its full section/downbeat history and aligns cuts to the previous section only.
 
@@ -150,7 +179,8 @@ keeps its full section/downbeat history and aligns cuts to the previous section 
   scene's `exposureKey`. Clamped to 0.5–2× so it evens out loud vs quiet passages
   without flattening a scene's look.
 - **Composite**: chromatic aberration (kicks/snares widen it), flash, ACES tonemap,
-  vignette, grain, title card, dither.
+  vignette, grain, cover art (badge or backdrop), lyric line, title card, dither. Art and text
+  are textures composited here, so exports include them.
 - All trail parameters are scaled by `dt`, so 30, 60 and 144 fps look the same.
 
 ## Live mode differences

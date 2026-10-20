@@ -4,6 +4,7 @@ import type { PeakPickOptions } from "./dsp.ts";
 import { BANDS, bandIndices, compressValue, DETECTORS, EPS, hatGate, HAT, HPSS_FREQ, HPSS_TIME, isNearAny, KICK, NOTE_DRUM_GUARD, REF_FLOOR, rowFlux, SNARE_CRACK, SNARE_TONAL_DELAY, snareGate, toDb } from "./bands.ts";
 import type { Detector, Range } from "./bands.ts";
 import { FFT_SIZE, FrameAnalyzer, HOP, MEL_BANDS, MFCC_COUNT, melCenters } from "./frame.ts";
+import { MELODY_CANDIDATES, MelodySalience, trackMelody } from "./pitch.ts";
 import { EVENT_KINDS, SCALAR_NAMES } from "./types.ts";
 import type { EventKind, EventTrack, ScalarName, TrackAnalysis } from "./types.ts";
 
@@ -242,6 +243,10 @@ export function analyzeTrack(left: Float32Array, right: Float32Array | null, sam
   const flatness = new Float32Array(frames);
   const crackTonal = new Float32Array(frames);
   const width = new Float32Array(frames);
+  const salience = new MelodySalience(sampleRate);
+  const candMidi = new Float32Array(frames * MELODY_CANDIDATES);
+  const candSal = new Float32Array(frames * MELODY_CANDIDATES);
+  const clarity = new Float32Array(frames);
   const buf = new Float32Array(FFT_SIZE);
 
   for (let f = 0; f < frames; f++) {
@@ -271,6 +276,10 @@ export function analyzeTrack(left: Float32Array, right: Float32Array | null, sam
     flatness[f] = analyzer.flatness;
     crackTonal[f] = analyzer.crackTonal;
     width[f] = mid2 > 1e-9 ? Math.min(1, Math.sqrt(side2 / mid2)) : 0;
+    salience.process(analyzer.magnitude);
+    candMidi.set(salience.candMidi, f * MELODY_CANDIDATES);
+    candSal.set(salience.candSalience, f * MELODY_CANDIDATES);
+    clarity[f] = salience.clarity;
     if (onProgress && f % 2000 === 0) onProgress((0.7 * f) / frames);
   }
 
@@ -401,6 +410,20 @@ export function analyzeTrack(left: Float32Array, right: Float32Array | null, sam
   scalars.hueY = smooth(hueY, hueRadius);
 
   [scalars.timbreX, scalars.timbreY, scalars.timbreZ] = timbreSpace(mfcc, voiced, [scalars.brightness, scalars.noisiness, scalars.loudness]);
+  const harmonicShare = new Float32Array(frames);
+  for (let f = 0; f < frames; f++) {
+    let h = 0;
+    let all = 0;
+    for (let c = 0; c < MEL_BANDS; c++) {
+      h += harmonic.data[f * MEL_BANDS + c];
+      all += power.data[f * MEL_BANDS + c];
+    }
+    harmonicShare[f] = all > EPS ? h / all : 0;
+  }
+  const melody = trackMelody(candMidi, candSal, clarity, harmonicShare, voiced, fps);
+  scalars.melody = melody.melody;
+  scalars.pitch = melody.pitch;
+  scalars.voice = melody.voice;
   onProgress?.(0.9);
 
   const noveltyFeatures = new Matrix(frames, 3 + 12 + 1);
@@ -446,6 +469,6 @@ export function analyzeTrack(left: Float32Array, right: Float32Array | null, sam
   onProgress?.(1);
 
   const odfs = { kick: kickOdf, snare: snareOdf, hat: hatOdf, onset: onsetOdf, note: noteOdf };
-  const debug = { hatFlux, pulse };
+  const debug = { hatFlux, pulse, melodyMidi: melody.midi, clarity };
   return { sampleRate, fps, frames, duration: length / sampleRate, tempo, scalars, mel, chroma: chromaSmooth, events, odfs, debug };
 }

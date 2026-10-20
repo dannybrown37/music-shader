@@ -16,6 +16,7 @@ uniform float p_size;
 uniform float p_shots;
 uniform float p_lasers;
 uniform float p_blast;
+uniform float p_melody;
 
 const float NEAR = 0.6;
 const float FAR = 26.0;
@@ -453,6 +454,23 @@ void main() {
       float bd = rayPointDist(ro, rd, bit, tt);
       if (tt < sceneT) glow += ramp(0.9) * exp(-bd / (0.006 * max(tt, 0.5))) * fade * 1.4 * p_blast;
     }
+  }
+
+  // ---- Melody contrail: the tune written across the sky, now above the sun, older toward the edges.
+  if (sceneT > 1e8 && p_melody > 0.0) {
+    float aspect = uResolution.x / uResolution.y;
+    float age = abs(uv.x) / aspect;
+    vec2 ml = melodyLine(age);
+    float y = 0.32 + 0.55 * ml.x;
+    float slope = (0.55 * melodyLine(age + 0.01).x + 0.32 - y) / (0.01 * aspect);
+    float steep = sqrt(1.0 + slope * slope);
+    float d = abs(uv.y - y) / steep;
+    float w = 0.006 + 0.01 * uVoice;
+    float line = smoothstep(w, w * 0.3, d) + exp(-d / (w * 4.0)) * 0.3;
+    vec3 tint = mix(palette(0.6), vec3(1.0, 0.85, 0.7), 0.4 * uVoice);
+    // Held notes draw bright; the jumps between them only faintly, so the tune reads as steps.
+    float held = mix(0.15, 1.0, 1.0 / steep);
+    glow += tint * line * held * smoothstep(0.15, 0.5, ml.y) * smoothstep(1.0, 0.6, age) * p_melody * 1.2;
   }
 
   if (sceneT < 1e8) {

@@ -14,6 +14,13 @@ uniform float uGrain;
 uniform float uVignette;
 uniform float uFlash;
 uniform float uOverlayAlpha;
+uniform sampler2D uArt;         // cover art / logo, straight alpha
+uniform float uArtMode;         // 0 off, 1 badge mid-screen, 2 backdrop
+uniform float uArtSize;         // badge size, or backdrop strength
+uniform float uArtAspect;       // image width / height
+uniform float uArtPulse;        // kick envelope: the badge and backdrop breathe with it
+uniform sampler2D uLyrics;      // current lyric line, drawn like the title card
+uniform float uLyricsAlpha;
 uniform sampler2D uAdapted;     // 1×1: log of the eye-adapted average luminance
 uniform float uAutoExposure;    // 0 = fixed exposure, 1 = fully normalise to uKey
 uniform float uKey;
@@ -49,6 +56,30 @@ void main() {
   col += g * uGrain * 0.12 * (1.0 - luma * 0.7);
 
   col = pow(max(col, 0.0), vec3(1.0 / 2.2));
+
+  // p: centred, screen height = 1.
+  vec2 p = d * vec2(aspect, 1.0);
+  if (uArtMode > 1.5) {
+    // Backdrop: cover-fit, breathing with the kick, screened under the scene so bright structure stays on top.
+    float h = max(1.0, aspect / uArtAspect) * (1.0 - 0.015 * uArtPulse);
+    vec2 auv = vec2(0.5 + p.x / (h * uArtAspect), 0.5 - p.y / h);
+    vec4 art = texture(uArt, auv);
+    vec3 under = art.rgb * art.a * 0.3 * uArtSize;
+    col = 1.0 - (1.0 - col) * (1.0 - under);
+  } else if (uArtMode > 0.5) {
+    // Badge: a centred disc of the art's middle square, pulsing on kicks, with a lit rim.
+    float radius = 0.2 * uArtSize * (1.0 + 0.05 * uArtPulse);
+    float r = length(p);
+    vec2 crop = vec2(min(1.0, 1.0 / uArtAspect), min(1.0, uArtAspect));
+    vec4 art = texture(uArt, vec2(0.5, 0.5) + vec2(p.x, -p.y) / (2.0 * radius) * crop);
+    float inside = smoothstep(radius, radius - 0.003, r);
+    col *= 1.0 - 0.6 * exp(-max(r - radius, 0.0) * 25.0) * step(radius, r);
+    col = mix(col, art.rgb, inside * art.a);
+    col += vec3(1.0) * exp(-abs(r - radius) * 220.0) * (0.25 + 0.6 * uArtPulse);
+  }
+
+  vec4 lyric = texture(uLyrics, vec2(vUv.x, 1.0 - vUv.y));
+  col = mix(col, lyric.rgb, lyric.a * uLyricsAlpha);
   vec4 overlay = texture(uOverlay, vec2(vUv.x, 1.0 - vUv.y));
   col = mix(col, overlay.rgb, overlay.a * uOverlayAlpha);
   col += (hash(gl_FragCoord.xy * 1.37) - 0.5) / 255.0;

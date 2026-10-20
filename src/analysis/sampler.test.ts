@@ -94,10 +94,28 @@ describe("FeatureSampler", () => {
     expect(f.energyTime).toBeCloseTo(1.5, 1);
   });
 
+  it.each([
+    // Timbre ramps frame / 100 at 10 fps; slow timbre averages the frames of the last second.
+    [5, 0.455],
+    [5.05, 0.455],
+    [0.3, 0.015],
+    [0, 0],
+  ])("slow timbre at %f s averages the past second (%f)", (t, expected) => {
+    sampler.sample(t, f, decays);
+    Array.from(f.timbreSlow).forEach((v) => expect(v).toBeCloseTo(expected, 4));
+  });
+
   it("lists recent events newest first with their ages", () => {
     sampler.sample(3.5, f, decays);
     expect(Array.from(f.recent.kick.slice(0, 6))).toEqual([0.5, 1, 1.5, 0.5, 2.5, 1]);
     expect(f.recent.kick[6]).toBe(-1);
+  });
+
+  it("fills the melody line history as (pitch, melody) pairs, newest first", () => {
+    // Every fake scalar ramps 0→1 over 10 s, so both channels read t / 10.
+    const out = new Float32Array(3 * 2);
+    sampler.melodyLine(5, 3, 2, out);
+    Array.from(out).forEach((v, i) => expect(v).toBeCloseTo([0.5, 0.5, 0.4, 0.4, 0.3, 0.3][i], 4));
   });
 
   it("gives each recent note the pitch class that sounded just after it, newest first", () => {

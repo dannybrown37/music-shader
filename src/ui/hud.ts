@@ -34,6 +34,9 @@ const BARS: [ScalarName, string][] = [
   ["tonalness", "tonal"],
   ["width", "width"],
   ["novelty", "novelty"],
+  ["melody", "melody"],
+  ["pitch", "pitch"],
+  ["voice", "voice"],
 ];
 
 const NOTE_NAMES = ["C", "C♯", "D", "E♭", "E", "F", "F♯", "G", "A♭", "A", "B♭", "B"];

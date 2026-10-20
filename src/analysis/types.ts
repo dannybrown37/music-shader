@@ -1,5 +1,5 @@
 /** Bump whenever analysis output changes, so cached analyses (src/audio/cache.ts) are recomputed. */
-export const ANALYSIS_VERSION = 2;
+export const ANALYSIS_VERSION = 3;
 
 /**
  * Continuous per-frame features. All are 0..1 except `timbre*` and `hue*`, which are -1..1.
@@ -36,6 +36,12 @@ export const SCALAR_NAMES = [
   "timbreZ",
   /** How different the sound is now from the last few seconds. */
   "novelty",
+  /** How clearly one pitched line (a voice, a lead) stands out of the mix. */
+  "melody",
+  /** That line's pitch, low → high across the song's melodic range. Holds its last value when there's no melody. */
+  "pitch",
+  /** A melody that wavers like a voice (vibrato): singing, also violin and bends. Hard-tuned vocals may not count. */
+  "voice",
 ] as const;
 
 export type ScalarName = (typeof SCALAR_NAMES)[number];

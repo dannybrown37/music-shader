@@ -15,9 +15,13 @@ uniform float uSub, uBass, uLowMid, uMid, uHigh, uAir;
 uniform float uPerc, uHarm;
 uniform float uBright, uNoisy, uTonal, uWidth, uNovelty;
 uniform vec3 uTimbre;       // -1..1: per-song instrument coordinates (x≈bright, y≈noisy, z≈loud)
+uniform vec3 uTimbreSlow;   // uTimbre averaged over the last second: the instrument, not each hit
 uniform float uKeyHue;      // 0..1 position of the dominant key on the circle of fifths
 uniform float uKeyStrength; // 0..1 how clear that key is
 uniform float uChroma[12];
+uniform float uMelody;      // how clearly one pitched line (a voice, a lead) stands out
+uniform float uPitch;       // 0..1 that line's pitch across the song's melodic range; holds when silent
+uniform float uVoice;       // the line wavers like a voice (vibrato); a subset of uMelody
 
 // ---- Events: decaying envelopes (0..~1.5) -----------------------------------
 uniform float uKick, uSnare, uHat, uOnset, uNote, uBeat, uDownbeat, uSection;
@@ -35,6 +39,7 @@ uniform float uNoteCount;    // notes so far: uNoteCount - i identifies uNoteHis
 // ---- Textures ----------------------------------------------------------------
 uniform sampler2D uSpectrum;     // 64×1 mel spectrum, low → high
 uniform sampler2D uSpectrogram;  // 64×128 history, row v=0 is now, v=1 is ~2s ago
+uniform sampler2D uMelodyLine;   // 2×128: (pitch, melody) history, row v=0 is now, v=1 is ~2s ago
 uniform sampler2D uPrev;         // previous output frame (for feedback-style scenes)
 
 // ---- Palette: four linear-RGB stops, dark → vivid → highlight, cyclic in t ------
@@ -67,6 +72,11 @@ vec3 ramp(float t) {
 
 float spectrum(float x) { return texture(uSpectrum, vec2(clamp(x, 0.0, 1.0), 0.5)).r; }
 float spectrogram(float x, float age) { return texture(uSpectrogram, vec2(clamp(x, 0.0, 1.0), clamp(age, 0.0, 1.0))).r; }
+// (pitch 0..1, melody strength) of the melody line `age` (0..1 = now..2s) ago.
+vec2 melodyLine(float age) {
+  float v = clamp(age, 0.0, 1.0);
+  return vec2(texture(uMelodyLine, vec2(0.25, v)).r, texture(uMelodyLine, vec2(0.75, v)).r);
+}
 
 mat2 rot(float a) { float c = cos(a), s = sin(a); return mat2(c, -s, s, c); }
 

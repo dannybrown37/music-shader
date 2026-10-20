@@ -215,3 +215,68 @@ Before/after: `out/review/{orb,kaleido,ensemble,particles}-ab.png`.
 
 - Real-time frame rate. Orb, Terrain and Particles now do more per pixel (spectrogram lookups in the
   raymarch, kick loops in the terrain height, 9 motes per pixel).
+
+## 2026-10-20: session 4 (roadmap items 1–4)
+
+You confirmed real-hardware performance (step 0), then asked for the rest of the roadmap end to end.
+
+### 1. Melody and voice (`src/analysis/pitch.ts`)
+
+- Harmonic summation over FFT peaks → 5 pitch candidates per frame → Viterbi line offline,
+  greedy causal pick live. New scalars `melody`, `pitch`, `voice`; uniforms `uMelody uPitch uVoice`
+  and a 2 s `melodyLine(age)` texture. `ANALYSIS_VERSION` → 3. Analysis is ~20% slower (+1 s per 3-min song).
+- What real music taught me:
+  - Absolute clarity thresholds left EDM at ~0 melody; lowered them, and gated on the HPSS
+    sustained share, because a kick's pitch sweep read as a tune.
+  - The first "voice" readings (flute 0.36, Blue Mars 0.49) were **beating**: two near-unison
+    partials make the pitch jitter at ~21 Hz. Vibrato is 4–8 Hz, so the wobble is now
+    low-passed first. This instrumental library now reads voice ≈ 0–0.09, which is honest.
+    I couldn't test a real vocal track (none on this machine); a synthetic vibrato line over
+    drums passes.
+  - The pitch line flipped between two close candidates every frame; jumps now carry a fixed cost.
+- Scenes: Tunnel gets mirrored melody ribbons on the wall (`p_melody`); Gauntlet writes the
+  line across the sky, with held notes bright and jumps faint. Stills: `out/review/melody-scenes.png`.
+
+### 2. Show (`src/render/show.ts`, `src/ui/timeline.ts`)
+
+Per-song cues (scene, palette, cut/fade) that replace Auto VJ. Pure `showAt(t)`, so exports and
+seeks agree. Timeline strip: sections, bars, cue blocks; K adds a cue on the nearest downbeat,
+drag to move, Del to delete; *Start from Auto VJ's choices* seeds it. Screenshots:
+`out/review/timeline-{desktop,mobile}.png`.
+
+### 3. Cover art, lyrics, thumbnail
+
+Composited in `composite.glsl`, so exports include them. Art is session-only (images are too big
+for localStorage); lyrics (.lrc) are saved per song. Thumbnail = 1280×720 at the most intense
+moment between 15% and 85% of the song. Stills: `out/review/art-sheet.png`, `out/review/thumbnail.png`.
+
+### 4. Shipping
+
+- `.github/workflows/ci.yml`: typecheck, lint, test, build, then `tools/smoke.ts` compiles and
+  draws every scene in headless Chrome. A deliberately broken Tunnel shader made it fail, as it should.
+- `.github/workflows/pages.yml`: GitHub Pages deploy (`BASE_PATH` from configure-pages). Checked
+  locally: built with base `/music-shader/` and served with `vite preview`; the smoke test passes.
+- Share links: Presets → *Copy share link* (settings in the URL hash, title left out, merged
+  through `mergeSettings` on load).
+
+### 5. Tessellate (scene 10, key 0)
+
+- Tiles = Voronoi cells of a lattice with two point pairs per cell (horizontal pair at the cell
+  corner, vertical pair at its centre). One family covers diamonds → triangles → Cairo pentagons →
+  long hexagons as the pairs separate; turning the pairs against each other gives further tilings.
+  A lattice-periodic bend keeps every tile congruent while the edges curve (Escher-like).
+- Driven by: slow timbre (shape, bend, lattice lean), snare count (pairs turn π/8 per snare, eased
+  over 0.18 s), kick (pairs pump apart), band per tile (nested outlines), kick history (tile waves),
+  note pitch classes (tile pitch = hash mod 12), section seed (lattice).
+- First pass used `uTimbre` directly and the tiling changed on every drum hit (timbre is only
+  ~23 ms smoothed). Added `Features.timbreSlow` → `uTimbreSlow` (1 s average; live EMA τ = 0.5 s).
+  No analysis change, so no `ANALYSIS_VERSION` bump.
+- Also too bright at first (0.24 adapted luminance on the Haus drop): outlines covered the tiles at
+  preview resolution. Bigger tiles, fewer and dimmer outlines → 0.06 there, 0.004–0.01 on ambient.
+
+### Not checked
+
+- Tessellate's frame rate on a real GPU (72 site lookups per pixel, cheaper than Kaleido's fractal).
+- Real vocals (no vocal recordings here). Drag-drop of images/.lrc and the clipboard share link in
+  Windows Chrome (headless covered loading via URL params, not the drop events).
+- CI and Pages have never run on GitHub (no remote yet).

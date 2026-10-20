@@ -11,6 +11,41 @@ export function titleAlpha(t: number): number {
   return smooth(FADE_IN[0], FADE_IN[1], t) * (1 - smooth(FADE_OUT[0], FADE_OUT[1], t));
 }
 
+/** One lyric line, centred above the title card's spot, wrapped to at most two lines. */
+export function drawLyric(width: number, height: number, text: string): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx || !text) return canvas;
+  const unit = height / 1080;
+  const size = Math.round(54 * unit);
+  ctx.font = `500 ${size}px "Inter", "Segoe UI", "Helvetica Neue", sans-serif`;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.shadowColor = "rgba(0,0,0,0.8)";
+  ctx.shadowBlur = 18 * unit;
+  ctx.fillStyle = "rgba(255,255,255,0.97)";
+  const lines = wrap(ctx, text, width * 0.8).slice(0, 2);
+  const bottom = height - 270 * unit;
+  lines.forEach((line, i) => ctx.fillText(line, width / 2, bottom - (lines.length - 1 - i) * size * 1.25));
+  return canvas;
+}
+
+function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): string[] {
+  const lines: string[] = [];
+  let line = "";
+  for (const word of text.split(/\s+/)) {
+    const next = line ? `${line} ${word}` : word;
+    if (line && ctx.measureText(next).width > maxWidth) {
+      lines.push(line);
+      line = word;
+    } else line = next;
+  }
+  if (line) lines.push(line);
+  return lines;
+}
+
 export function drawTitleCard(width: number, height: number, title: string, subtitle: string): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = width;

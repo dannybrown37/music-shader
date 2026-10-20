@@ -120,4 +120,32 @@ describe("LiveAnalyzer features", () => {
     expect(out.every((v) => Number.isFinite(v) && v >= 0 && v <= 1)).toBe(true);
     expect(out.some((v) => v > 0)).toBe(true);
   });
+
+  it("fills a melody line history", () => {
+    const out = new Float32Array(2 * 32);
+    live.melodyLine(live.time, 32, 2, out);
+    expect(out.every((v) => Number.isFinite(v) && v >= 0 && v <= 1)).toBe(true);
+  });
+
+  it("keeps a slow timbre that moves far less than the per-hit timbre", () => {
+    const audio = drumPattern(124, 6, true).audio;
+    const fresh = new LiveAnalyzer(SR);
+    const g = createFeatures();
+    let fast = 0;
+    let slow = 0;
+    let prev: number[] | null = null;
+    for (let i = 0; i < audio.length; i += CHUNK) {
+      fresh.push(audio.subarray(i, Math.min(audio.length, i + CHUNK)), null);
+      fresh.sample(fresh.time, g, decays);
+      const now = [g.scalars.timbreX, g.scalars.timbreY, g.scalars.timbreZ, ...g.timbreSlow];
+      if (prev && fresh.time > 2) for (let d = 0; d < 3; d++) {
+        fast += Math.abs(now[d] - prev[d]);
+        slow += Math.abs(now[d + 3] - prev[d + 3]);
+      }
+      prev = now;
+    }
+    expect(fast).toBeGreaterThan(1);
+    expect(slow).toBeLessThan(fast * 0.3);
+    expect(Array.from(g.timbreSlow).every((v) => Number.isFinite(v) && Math.abs(v) <= 1)).toBe(true);
+  });
 });

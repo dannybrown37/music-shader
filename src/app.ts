@@ -17,7 +17,13 @@ import { Reactor, sectionParams } from "./render/reactivity.ts";
 import { Renderer, SPECTROGRAM_ROWS } from "./render/renderer.ts";
 import type { SceneFade } from "./render/renderer.ts";
 import { buildSchedule, sceneAt } from "./render/schedule.ts";
-import type { Downbeats } from "./render/schedule.ts";
+import type { Downbeats, ScheduleOptions } from "./render/schedule.ts";
+import { cuesFromSchedule, parseShow, showAt } from "./render/show.ts";
+import type { Cue } from "./render/show.ts";
+import { songStore } from "./song-store.ts";
+import { lyricAt, parseLrc } from "./lyrics.ts";
+import type { LyricLine } from "./lyrics.ts";
+import { thumbnailTime } from "./export/thumbnail.ts";
 import { sceneById, SCENES, SCENES_UPDATED } from "./render/scenes/index.ts";
 import type { SceneDef } from "./render/scenes/index.ts";
 import { ShaderError } from "./render/gl.ts";
@@ -25,7 +31,7 @@ import { defaultSettings } from "./settings.ts";
 import { loadTempoFactor, saveTempoFactor } from "./tempo-memory.ts";
 import type { Settings } from "./settings.ts";
 import { Hud } from "./ui/hud.ts";
-import { drawTitleCard, titleAlpha } from "./ui/overlay.ts";
+import { drawLyric, drawTitleCard, titleAlpha } from "./ui/overlay.ts";
 
 const SPECTROGRAM_SPAN_SECONDS = 2;
 const MAX_PIXEL_RATIO = 2;
@@ -34,9 +40,22 @@ const MAX_PIXEL_RATIO = 2;
 interface FeatureSource {
   sample(t: number, out: Features, decays: Settings["decay"]): void;
   spectrogram(t: number, rows: number, span: number, out: Float32Array): void;
+  melodyLine(t: number, rows: number, span: number, out: Float32Array): void;
   sectionTimes(): Float32Array;
   downbeats(): Downbeats;
 }
+
+const shows = songStore(
+  "music-shader.shows",
+  (raw) => parseShow({ cues: raw }),
+  (cues) => cues.length === 0,
+);
+const MAX_LRC_CHARS = 200_000;
+const lyricsStore = songStore(
+  "music-shader.lyrics",
+  (raw) => (typeof raw === "string" ? raw.slice(0, MAX_LRC_CHARS) : ""),
+  (text) => text === "",
+);
 
 const FADE_SECONDS = 1.5;
 /** Offline we know where sections are, so the crossfade starts early and the new scene lands on the change. */
@@ -65,6 +84,13 @@ export class App {
   titleStart = 0;
   onStatus: (message: string, isError?: boolean) => void = () => {};
   onTrackLoaded: () => void = () => {};
+  /** Hand-placed scene changes for the loaded song (see render/show.ts). */
+  show: Cue[] = [];
+  /** Off: the show is kept but Auto VJ / the chosen scene play instead. */
+  useShow = true;
+  onShowChanged: () => void = () => {};
+  lyrics: LyricLine[] = [];
+  private lyricKey = "";
 
   private sampler: FeatureSampler | null = null;
   private rawAnalysis: TrackAnalysis | null = null;
@@ -78,6 +104,7 @@ export class App {
   activeScene = "";
   private readonly quality = new QualityGovernor(1);
   private readonly spectrogramData = new Float32Array(MEL_BANDS * SPECTROGRAM_ROWS);
+  private readonly melodyData = new Float32Array(2 * SPECTROGRAM_ROWS);
   private mosaic: { source: FeatureSource | null; size: number; planner: MosaicPlanner; feed: LiveMosaicFeed } | null = null;
   private readonly shapeData = new Float32Array(MAX_SHAPES * TEXELS_PER_SHAPE * 4);
   private lastFrame = performance.now();
@@ -201,6 +228,9 @@ export class App {
     }
     this.rawAnalysis = analysis;
     this.songKey = key;
+    this.show = shows.load(key);
+    this.lyrics = parseLrc(lyricsStore.load(key));
+    this.onShowChanged();
     this.useTempoFactor(loadTempoFactor(key));
     this.player.setBuffer(buffer);
     this.trackName = name;
@@ -267,21 +297,27 @@ export class App {
     if (source) {
       source.sample(t, f, s.decay);
       source.spectrogram(t, SPECTROGRAM_ROWS, SPECTROGRAM_SPAN_SECONDS, this.spectrogramData);
+      source.melodyLine(t, SPECTROGRAM_ROWS, SPECTROGRAM_SPAN_SECONDS, this.melodyData);
     } else idleFeatures(f, t);
     this.renderer.spectrum.upload(f.mel);
-    if (source) this.renderer.spectrogram.upload(this.spectrogramData);
+    if (source) {
+      this.renderer.spectrogram.upload(this.spectrogramData);
+      this.renderer.melodyLine.upload(this.melodyData);
+    }
     let scene = sceneById(s.scene);
     let fade: SceneFade | undefined;
-    if (s.autoScenes && source) {
+    let looks = s;
+    if (this.showActive) {
+      const at = showAt(t, this.show, { scene: s.scene, palette: null }, { fade: FADE_SECONDS, lead: FADE_LEAD_SECONDS });
+      scene = sceneById(at.scene);
+      looks = withPalette(s, at.palette);
+      if (at.from) {
+        const from = sceneById(at.from.scene);
+        fade = { scene: from, uniforms: this.fadeReactor.build(f, withPalette(s, at.from.palette), this.paramsNow(from)), mix: at.mix };
+      }
+    } else if (s.autoScenes && source) {
       const start = Math.max(0, SCENES.findIndex((x) => x.id === s.scene));
-      const events = buildSchedule(source.sectionTimes(), source.downbeats(), {
-        minSeconds: s.autoSceneSeconds,
-        lead: this.live ? 0 : FADE_LEAD_SECONDS,
-        cuts: s.autoCuts,
-        cutIntensity: s.autoCutIntensity,
-        cutBars: s.autoCutBars,
-        lookahead: !this.live,
-      });
+      const events = buildSchedule(source.sectionTimes(), source.downbeats(), this.scheduleOptions());
       const at = sceneAt(t, events, { sceneCount: SCENES.length, start, fade: FADE_SECONDS });
       scene = SCENES[at.current];
       if (at.previous >= 0) {
@@ -293,15 +329,104 @@ export class App {
       this.renderer.setScene(scene);
       this.activeScene = scene.id;
     }
-    const uniforms = this.reactor.build(f, s, this.paramsNow(scene));
+    const uniforms = this.reactor.build(f, looks, this.paramsNow(scene));
     if (scene.id === "mosaic" || fade?.scene.id === "mosaic") {
       const shapes = this.updateMosaic(t, source);
       uniforms.uShapeCount = shapes;
       if (fade) fade.uniforms.uShapeCount = shapes;
     }
     this.updateOverlay();
-    const alpha = s.overlay.showTitle && this.sampler && !this.live ? titleAlpha(t - this.titleStart) : 0;
-    this.renderer.render(uniforms, s.look, alpha, dt, fade);
+    const song = this.sampler !== null && !this.live;
+    this.renderer.render(
+      uniforms,
+      s.look,
+      {
+        title: s.overlay.showTitle && song ? titleAlpha(t - this.titleStart) : 0,
+        lyrics: s.overlay.showLyrics && song ? this.updateLyric(t) : 0,
+        art: s.overlay.artMode,
+        artSize: s.overlay.artSize,
+      },
+      dt,
+      fade,
+    );
+  }
+
+  private scheduleOptions(): ScheduleOptions {
+    const s = this.settings;
+    return {
+      minSeconds: s.autoSceneSeconds,
+      lead: this.live ? 0 : FADE_LEAD_SECONDS,
+      cuts: s.autoCuts,
+      cutIntensity: s.autoCutIntensity,
+      cutBars: s.autoCutBars,
+      lookahead: !this.live,
+    };
+  }
+
+  /** The show drives scenes only for a loaded file: its cue times are song times. */
+  get showActive(): boolean {
+    return this.useShow && this.show.length > 0 && this.sampler !== null && !this.live;
+  }
+
+  /** Replaces the song's show and remembers it. */
+  setShow(cues: Cue[]): void {
+    this.show = cues;
+    if (this.songKey) shows.save(this.songKey, cues);
+    this.onShowChanged();
+  }
+
+  /** Timed lyrics (.lrc text) for the loaded song; remembered per song. Returns the line count. */
+  setLyrics(lrc: string): number {
+    const text = lrc.slice(0, MAX_LRC_CHARS);
+    this.lyrics = parseLrc(text);
+    if (this.songKey) lyricsStore.save(this.songKey, this.lyrics.length > 0 ? text : "");
+    this.lyricKey = "";
+    return this.lyrics.length;
+  }
+
+  /** Cover art or a logo, kept for this session. Turns the badge on if art was off. */
+  async setArt(file: Blob): Promise<void> {
+    const image = await createImageBitmap(file);
+    this.renderer.setArt(image);
+    image.close();
+    if (this.settings.overlay.artMode === "off") this.settings.overlay.artMode = "badge";
+  }
+
+  /**
+   * A 1280×720 PNG for the video's YouTube thumbnail: the song's most intense moment, with the
+   * title card fully in. Borrows the canvas like the preset browser does.
+   */
+  async renderYouTubeThumbnail(): Promise<Blob> {
+    const a = this.analysis;
+    if (!a) throw new Error("Load a song first");
+    const t = thumbnailTime(a.scalars.intensity, a.scalars.loudness, a.fps);
+    const { showTitle } = this.settings.overlay;
+    const wasExporting = this.exporting;
+    this.exporting = true;
+    this.settings.overlay.showTitle = true;
+    this.titleStart = t - 3;
+    try {
+      this.renderStill(t, 1280, 720, 1.5, 30);
+      return await new Promise<Blob>((resolve, reject) => this.renderer.canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG encoding failed"))), "image/png"));
+    } finally {
+      this.settings.overlay.showTitle = showTitle;
+      this.titleStart = 0;
+      this.exporting = wasExporting;
+      this.renderer.resetFeedback();
+    }
+  }
+
+  /** Auto VJ's choices for this song as cues, to start a show from. */
+  autoVjCues(): Cue[] {
+    if (!this.sampler) return [];
+    const start = Math.max(0, SCENES.findIndex((x) => x.id === this.settings.scene));
+    const events = buildSchedule(this.sampler.sectionTimes(), this.sampler.downbeats(), this.scheduleOptions());
+    return cuesFromSchedule(
+      events,
+      SCENES.map((x) => x.id),
+      start,
+      FADE_LEAD_SECONDS,
+    );
   }
 
   /**
@@ -324,6 +449,18 @@ export class App {
   /** The scene's params as set in the panel, nudged by the current section's look. */
   private paramsNow(scene: SceneDef): Record<string, number> {
     return sectionParams(sceneParamsFor(this.settings, scene.id), scene.params, this.features, this.settings.sectionLooks);
+  }
+
+  /** Redraws the lyric texture only when the line or canvas size changes; returns the line's opacity. */
+  private updateLyric(t: number): number {
+    const { text, alpha } = lyricAt(t, this.lyrics);
+    const [w, h] = [this.renderer.canvas.width, this.renderer.canvas.height];
+    const key = `${text}|${w}x${h}`;
+    if (key !== this.lyricKey) {
+      this.lyricKey = key;
+      this.renderer.setLyrics(text ? drawLyric(w, h, text) : null);
+    }
+    return alpha;
   }
 
   private updateOverlay(): void {
@@ -372,6 +509,11 @@ export class App {
     this.renderAt(t, dt);
     this.renderer.adaptInstantly = false;
   }
+}
+
+/** A cue's palette replaces the preset's, and holds still instead of cycling per section. */
+function withPalette(s: Settings, palette: string | null): Settings {
+  return palette === null ? s : { ...s, palette, paletteCycle: false };
 }
 
 /** Gentle synthetic motion for when no track is loaded, so the welcome screen isn't static. */

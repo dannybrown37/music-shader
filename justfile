@@ -37,6 +37,27 @@ analyze file *args:
 shot *args:
     node tools/shot.ts {{args}}
 
+# Every scene compiles and draws a frame in headless Chrome (needs `just dev` running; CI runs this too)
+smoke *args:
+    node tools/smoke.ts {{args}}
+
+# Regenerate docs/scenes.png: one labelled still per scene, in key order (needs `just dev` and ImageMagick)
+scenes-png t="95":
+    #!/usr/bin/env bash
+    set -euo pipefail
+    mkdir -p out/scenes
+    tiles=()
+    n=0
+    for id in $(grep -oP '^\s+id: "\K\w+' src/render/scenes/index.ts); do
+        n=$((n + 1))
+        node tools/shot.ts --scene "$id" --t {{t}} --w 720 --h 404 --out "out/scenes/$id.png" > /dev/null
+        convert "out/scenes/$id.png" -resize 360x202 -fill white -pointsize 13 -gravity southwest \
+            -annotate +8+6 "$((n % 10))  $id" "out/scenes/$id-tile.png"
+        tiles+=("out/scenes/$id-tile.png")
+    done
+    montage "${tiles[@]}" -tile 5x -geometry +0+0 docs/scenes.png
+    echo "wrote docs/scenes.png ($n scenes)"
+
 # Preview every palette as out/palettes.png
 palettes:
     node tools/palettes.ts

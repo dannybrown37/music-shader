@@ -7,6 +7,7 @@ import nebula from "./nebula.glsl?raw";
 import orb from "./orb.glsl?raw";
 import particles from "./particles.glsl?raw";
 import terrain from "./terrain.glsl?raw";
+import tessellate from "./tessellate.glsl?raw";
 import tunnel from "./tunnel.glsl?raw";
 
 export interface SceneParam {
@@ -106,6 +107,7 @@ export const SCENES: SceneDef[] = [
       { key: "segments", label: "Tiles around", min: 4, max: 32, value: 16, step: 1 },
       { key: "spectrum", label: "Spectrum on walls", min: 0, max: 3, value: 1 },
       { key: "streaks", label: "Hat streaks", min: 0, max: 3, value: 1 },
+      { key: "melody", label: "Melody ribbons", min: 0, max: 3, value: 1 },
     ],
     look: { feedback: 0.35, feedbackZoom: 0.004, feedbackSpin: 0, bloom: 1.2, bloomThreshold: 0.6, chromatic: 1 },
     palette: "Neon",
@@ -186,6 +188,7 @@ export const SCENES: SceneDef[] = [
       { key: "shots", label: "Shots between dodges", min: 0, max: 4, value: 1, step: 1, steady: true },
       { key: "lasers", label: "Laser glow", min: 0, max: 3, value: 1 },
       { key: "blast", label: "Explosions", min: 0, max: 3, value: 1 },
+      { key: "melody", label: "Melody in the sky", min: 0, max: 3, value: 1 },
     ],
     look: { feedback: 0.25, feedbackZoom: 0.0, feedbackSpin: 0, bloom: 1.3, bloomThreshold: 0.6, chromatic: 0.8 },
     palette: "Synthwave",
@@ -207,6 +210,26 @@ export const SCENES: SceneDef[] = [
     look: { feedback: 0.2, feedbackZoom: 0.0, feedbackSpin: 0, bloom: 1.1, bloomThreshold: 0.65, chromatic: 0.5 },
     palette: "Neon",
     exposureKey: 0.04,
+  },
+  {
+    id: "tessellate",
+    name: "Tessellate",
+    description: "One tile shape covers the screen and keeps changing: timbre reshapes it, each snare turns it, each tile fills with outlines by its band",
+    source: tessellate,
+    params: [
+      { key: "scale", label: "Tile size", min: 0.4, max: 2.5, value: 1 },
+      { key: "morph", label: "Timbre morph", min: 0, max: 2, value: 1 },
+      { key: "snap", label: "Snare / kick reshape", min: 0, max: 3, value: 1 },
+      { key: "edges", label: "Edge glow", min: 0, max: 3, value: 1 },
+      { key: "insets", label: "Nested outlines", min: 0, max: 3, value: 1 },
+      { key: "waves", label: "Kick waves", min: 0, max: 3, value: 1 },
+      { key: "notes", label: "Note tiles", min: 0, max: 3, value: 1 },
+      { key: "glints", label: "Hat corner glints", min: 0, max: 3, value: 1 },
+      { key: "layout", label: "New lattice per section", min: 0, max: 2, value: 1 },
+    ],
+    look: { feedback: 0.3, feedbackZoom: 0.003, feedbackSpin: 0, bloom: 1.2, bloomThreshold: 0.6, chromatic: 0.6 },
+    palette: "Aurora",
+    exposureKey: 0.03,
   },
 ];
 

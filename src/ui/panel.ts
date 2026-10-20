@@ -4,11 +4,17 @@ import type { App } from "../app.ts";
 import { builtinPresets, loadUserPresets, saveUserPresets, sceneParamsFor } from "../presets.ts";
 import { PALETTES } from "../render/palettes.ts";
 import { SCENES, sceneById } from "../render/scenes/index.ts";
-import { AUTO_CUT_BARS, DECAY_RANGES, LOOK_RANGES, mergeSettings, REACTIVITY_RANGES } from "../settings.ts";
+import { ART_MODES, ART_SIZE, AUTO_CUT_BARS, DECAY_RANGES, LOOK_RANGES, mergeSettings, REACTIVITY_RANGES } from "../settings.ts";
 import type { Range, Settings } from "../settings.ts";
 import { EXPORT_RESOLUTIONS } from "../export/video.ts";
 import type { TempoFactor } from "../analysis/beats.ts";
 import { nextTempoFactor } from "../tempo-memory.ts";
+import { parseShow, removeCue, setCue, snapToBar } from "../render/show.ts";
+import type { Cue } from "../render/show.ts";
+import type { Timeline } from "./timeline.ts";
+import { encodeShare } from "../share.ts";
+
+const KEEP_PALETTE = "(preset's)";
 
 export interface PanelActions {
   openFile: () => void;
@@ -26,6 +32,9 @@ export class Panel {
   private presetController: Controller | null = null;
   private readonly state: { track: string; preset: string; saveAs: string; tempo: TempoFactor } = { track: "", preset: "", saveAs: "My preset", tempo: 1 };
   private readonly exportState = { resolution: "1080p", fps: 60, start: 0, end: 0, quality: "very high" };
+  private readonly cueState = { scene: SCENES[0].id, transition: "fade", palette: KEEP_PALETTE };
+  private cueControllers: Controller[] = [];
+  private timeline: Timeline | null = null;
 
   constructor(app: App, tracks: string[], actions: PanelActions) {
     this.app = app;
@@ -63,6 +72,7 @@ export class Panel {
     presets.add({ surprise: () => this.surprise() }, "surprise").name("Surprise me (R)");
     presets.add({ save: () => this.savePreset() }, "save").name("Save current as preset");
     presets.add({ exp: () => this.exportPreset() }, "exp").name("Download preset JSON");
+    presets.add({ link: () => void this.copyShareLink() }, "link").name("Copy share link");
     presets.add({ imp: () => this.importPreset() }, "imp").name("Import preset JSON…");
 
     const s = app.settings;
@@ -115,7 +125,15 @@ export class Panel {
         app.hud.visible = v;
         changed();
       });
+    overlay.add({ art: () => chooseFile("image/*", (f) => this.loadArt(f)) }, "art").name("Load cover art / logo…");
+    overlay.add(s.overlay, "artMode", [...ART_MODES]).name("Cover art").onChange(changed);
+    overlay.add(s.overlay, "artSize", ART_SIZE.min, ART_SIZE.max, 0.01).name("Art size / strength").onChange(changed);
+    overlay.add({ lrc: () => chooseFile(".lrc,text/plain", (f) => this.loadLyrics(f)) }, "lrc").name("Load lyrics (.lrc)…");
+    overlay.add(s.overlay, "showLyrics").name("Show lyrics").onChange(changed);
+    overlay.add({ clear: () => this.loadLyricsText("", "") }, "clear").name("Clear lyrics");
     overlay.close();
+
+    this.buildShowFolder();
 
     const exp = gui.addFolder("Export video");
     exp.add(this.exportState, "resolution", Object.keys(EXPORT_RESOLUTIONS)).name("Resolution");
@@ -125,12 +143,162 @@ export class Panel {
     exp.add(this.exportState, "end", 0, 3600, 0.1).name("End (s, 0 = song end)");
     exp.add({ go: () => actions.exportVideo({ ...this.exportState }) }, "go").name("Render video…");
     exp.add({ rec: actions.toggleRecording }, "rec").name("Record live, start / stop (C)");
+    exp.add({ thumb: () => void this.saveThumbnail() }, "thumb").name("YouTube thumbnail (PNG)");
     exp.close();
 
     app.hud.visible = s.overlay.showHud;
     this.state.preset = SCENES.find((x) => x.id === s.scene)?.name ?? "";
     this.presetController?.updateDisplay();
     if (window.innerWidth < 700) gui.close();
+  }
+
+  /** Show: hand-placed scene changes for this song, edited here and on the timeline. */
+  private buildShowFolder(): void {
+    const app = this.app;
+    const folder = this.gui.addFolder("Show (this song)");
+    folder.add(app, "useShow").name("Play this song's show");
+    folder.add({ add: () => this.addCue() }, "add").name("Add cue here: current scene (K)");
+    folder.add({ fill: () => this.fillShowFromAutoVj() }, "fill").name("Start from Auto VJ's choices");
+    const sceneNames = Object.fromEntries(SCENES.map((x) => [x.name, x.id]));
+    const cue = this.cueState;
+    const edit = (): void => this.editSelectedCue();
+    this.cueControllers = [
+      folder.add(cue, "scene", sceneNames).name("Selected cue: scene").onChange(edit),
+      folder.add(cue, "transition", ["fade", "cut"]).name("Selected cue: arrives by").onChange(edit),
+      folder.add(cue, "palette", [KEEP_PALETTE, ...PALETTES.map((p) => p.name)]).name("Selected cue: palette").onChange(edit),
+      folder.add({ del: () => this.deleteSelectedCue() }, "del").name("Delete selected cue (Del)"),
+    ];
+    folder.add({ clear: () => this.clearShow() }, "clear").name("Clear show");
+    folder.add({ exp: () => this.exportShow() }, "exp").name("Download show JSON");
+    folder.add({ imp: () => this.importShow() }, "imp").name("Import show JSON…");
+    folder.close();
+    this.showSelection(null);
+  }
+
+  attachTimeline(timeline: Timeline): void {
+    this.timeline = timeline;
+    timeline.onSelect = (cue): void => this.showSelection(cue);
+  }
+
+  private showSelection(cue: Cue | null): void {
+    if (cue) {
+      this.cueState.scene = cue.scene;
+      this.cueState.transition = cue.cut ? "cut" : "fade";
+      this.cueState.palette = cue.palette ?? KEEP_PALETTE;
+    }
+    for (const c of this.cueControllers) {
+      c.enable(cue !== null);
+      c.updateDisplay();
+    }
+  }
+
+  /** K: a cue for the panel's current scene at the playhead, snapped to the nearest downbeat. */
+  addCue(): void {
+    const app = this.app;
+    if (!app.analysis || app.isLive) {
+      app.onStatus("Load a song to make a show", true);
+      return;
+    }
+    const t = snapToBar(app.player.time, app.analysis.events.downbeat.times);
+    app.setShow(setCue(app.show, { t, scene: app.settings.scene, palette: null, cut: false }));
+    this.timeline?.select(t);
+    app.onStatus(`Cue at ${t.toFixed(1)} s: ${sceneById(app.settings.scene).name}`);
+  }
+
+  deleteSelectedCue(): void {
+    const cue = this.timeline?.selectedCue;
+    if (!cue) return;
+    this.app.setShow(removeCue(this.app.show, cue.t));
+    this.timeline?.select(null);
+  }
+
+  private editSelectedCue(): void {
+    const cue = this.timeline?.selectedCue;
+    if (!cue) return;
+    const { scene, transition, palette } = this.cueState;
+    this.app.setShow(setCue(this.app.show, { t: cue.t, scene, cut: transition === "cut", palette: palette === KEEP_PALETTE ? null : palette }));
+  }
+
+  private fillShowFromAutoVj(): void {
+    const app = this.app;
+    if (app.show.length > 0 && !window.confirm("Replace this song's show with Auto VJ's choices?")) return;
+    const cues = app.autoVjCues();
+    app.setShow(cues);
+    this.timeline?.select(null);
+    app.onStatus(cues.length > 0 ? `${cues.length} cues from Auto VJ. Click one on the timeline to change it` : "Auto VJ found no section changes in this song");
+  }
+
+  private clearShow(): void {
+    if (this.app.show.length === 0 || !window.confirm("Delete every cue in this song's show?")) return;
+    this.app.setShow([]);
+    this.timeline?.select(null);
+  }
+
+  private exportShow(): void {
+    const blob = new Blob([JSON.stringify({ song: this.app.trackName, cues: this.app.show }, null, 2)], { type: "application/json" });
+    const a = document.createElement("a");
+    a.href = URL.createObjectURL(blob);
+    a.download = `${this.app.settings.overlay.title || "show"} show.json`;
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  private importShow(): void {
+    if (!this.app.analysis) {
+      this.app.onStatus("Load the song first, then import its show", true);
+      return;
+    }
+    chooseFile("application/json,.json", (file) => {
+      file
+        .text()
+        .then((text) => {
+          const cues = parseShow(JSON.parse(text));
+          this.app.setShow(cues);
+          this.app.onStatus(`Imported ${cues.length} cues from ${file.name}`);
+        })
+        .catch((err: unknown) => this.app.onStatus(`Could not import ${file.name}: ${err instanceof Error ? err.message : String(err)}`, true));
+    });
+  }
+
+  loadArt(file: File): void {
+    this.app
+      .setArt(file)
+      .then(() => {
+        this.gui.controllersRecursive().forEach((c) => c.updateDisplay());
+        this.app.settingsChanged();
+        this.app.onStatus(`Cover art: ${file.name} (kept until you reload; Overlay → Cover art switches badge / backdrop)`);
+      })
+      .catch((err: unknown) => this.app.onStatus(`Could not load ${file.name} as an image: ${String(err)}`, true));
+  }
+
+  loadLyrics(file: File): void {
+    file
+      .text()
+      .then((text) => this.loadLyricsText(text, file.name))
+      .catch((err: unknown) => this.app.onStatus(`Could not read ${file.name}: ${String(err)}`, true));
+  }
+
+  private loadLyricsText(text: string, name: string): void {
+    if (!this.app.analysis) {
+      this.app.onStatus("Load the song first, then its lyrics", true);
+      return;
+    }
+    const lines = this.app.setLyrics(text);
+    if (name && lines === 0) this.app.onStatus(`${name} has no timed lines like “[01:23.45] words”`, true);
+    else this.app.onStatus(name ? `${lines} lyric lines from ${name}` : "Lyrics cleared");
+  }
+
+  private async saveThumbnail(): Promise<void> {
+    try {
+      const blob = await this.app.renderYouTubeThumbnail();
+      const a = document.createElement("a");
+      a.href = URL.createObjectURL(blob);
+      a.download = `${this.app.settings.overlay.title || "music-shader"} thumbnail.png`;
+      a.click();
+      URL.revokeObjectURL(a.href);
+    } catch (err: unknown) {
+      this.app.onStatus(`Thumbnail failed: ${err instanceof Error ? err.message : String(err)}`, true);
+    }
   }
 
   cycleTempo(): void {
@@ -243,6 +411,16 @@ export class Panel {
     URL.revokeObjectURL(a.href);
   }
 
+  private async copyShareLink(): Promise<void> {
+    const url = `${location.origin}${location.pathname}#${encodeShare(this.app.settings)}`;
+    try {
+      await navigator.clipboard.writeText(url);
+      this.app.onStatus("Share link copied: it opens the app with this look (not the song)");
+    } catch {
+      window.prompt("Copy this link:", url);
+    }
+  }
+
   private importPreset(): void {
     const input = document.createElement("input");
     input.type = "file";
@@ -259,6 +437,17 @@ export class Panel {
     };
     input.click();
   }
+}
+
+function chooseFile(accept: string, onFile: (file: File) => void): void {
+  const input = document.createElement("input");
+  input.type = "file";
+  input.accept = accept;
+  input.onchange = (): void => {
+    const file = input.files?.[0];
+    if (file) onFile(file);
+  };
+  input.click();
 }
 
 function addRanges<K extends string>(folder: GUI, target: Record<K, number>, ranges: Record<K, Range>, onChange: () => void): void {

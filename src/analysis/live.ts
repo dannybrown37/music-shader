@@ -3,7 +3,8 @@ import { BANDS, bandIndices, compressValue, DETECTORS, EPS, hatGate, HAT, HPSS_F
 import type { DetectorName } from "./bands.ts";
 import { retain } from "./dsp.ts";
 import { FFT_SIZE, FrameAnalyzer, HOP, MEL_BANDS, melCenters } from "./frame.ts";
-import { dominantPitch, energyRate, eventState, notePitchState } from "./sampler.ts";
+import { LiveMelody, MELODY_GATE, MelodySalience, PITCH_MIN_SPAN } from "./pitch.ts";
+import { dominantPitch, energyRate, eventState, notePitchState, TIMBRE_SLOW_SECONDS } from "./sampler.ts";
 import type { Features } from "./sampler.ts";
 import { EVENT_KINDS, SCALAR_NAMES } from "./types.ts";
 import type { EventKind, EventTrack, ScalarName } from "./types.ts";
@@ -169,9 +170,14 @@ export class LiveAnalyzer {
   private energyTime = 0;
   private intensityDb = Number.NaN;
   private readonly chroma = new Float32Array(12);
+  private readonly timbreSlow = new Float32Array(3);
   private readonly mel = new Float32Array(MEL_BANDS);
   private readonly specRing: Float32Array;
   private readonly specRows: number;
+  private readonly salience: MelodySalience;
+  private readonly melody: LiveMelody;
+  /** (pitch, melody) per frame, same length as specRing, for the melody-line texture. */
+  private readonly melodyRing: Float32Array;
 
   constructor(sampleRate: number) {
     this.sampleRate = sampleRate;
@@ -195,6 +201,14 @@ export class LiveAnalyzer {
     this.pulse = new Float32Array(Math.round(TEMPO_WINDOW_SECONDS * this.fps));
     this.specRows = Math.round(SPECTROGRAM_SECONDS * this.fps);
     this.specRing = new Float32Array(this.specRows * MEL_BANDS);
+    this.salience = new MelodySalience(sampleRate);
+    this.melody = new LiveMelody(this.fps);
+    this.melodyRing = new Float32Array(this.specRows * 2);
+  }
+
+  /** The current melody pitch in MIDI (held when there's no melody). */
+  get melodyMidi(): number {
+    return this.melody.midi;
   }
 
   /** Feed any number of new samples. `right` may be null for mono input. */
@@ -469,6 +483,8 @@ export class LiveAnalyzer {
       }
       const z = (signs[d] * (x - this.mfccMean[d])) / Math.sqrt(this.mfccVar[d] + 1e-6);
       v[timbre[d - 1]] = ema(v[timbre[d - 1]], voiced ? Math.max(-1, Math.min(1, z / 2.5)) : 0, 0.03);
+      // An EMA lags by its time constant, a box average by half its width: same lag as offline.
+      this.timbreSlow[d - 1] = ema(this.timbreSlow[d - 1], v[timbre[d - 1]], TIMBRE_SLOW_SECONDS / 2);
     }
 
     const feat = [v.timbreX * 2, v.timbreY * 2, v.timbreZ * 2, v.intensity * 2, ...this.chroma];
@@ -478,6 +494,13 @@ export class LiveAnalyzer {
       this.noveltyLong[k] = ema(this.noveltyLong[k], feat[k], 6);
       dist += (this.noveltyShort[k] - this.noveltyLong[k]) ** 2;
     }
+    this.salience.process(a.magnitude);
+    this.melody.push(this.salience, harmSum / (harmSum + percSum + EPS));
+    const voicedNow = v.loudness > 0.02;
+    v.melody = voicedNow ? this.melody.confidence : 0;
+    v.voice = voicedNow ? this.melody.voice : 0;
+    if (v.melody >= MELODY_GATE) v.pitch = this.range("pitch", 0.5, PITCH_MIN_SPAN).normalize(this.melody.midi, dt);
+
     v.novelty = this.range("novelty", 0.05, 0.5).normalize(Math.sqrt(dist), dt);
     if (v.novelty < 0.4) this.noveltyArmed = true;
     if (this.noveltyArmed && v.novelty > 0.8 && t - this.lastSection > SECTION_GAP_SECONDS && t > SECTION_GAP_SECONDS) {
@@ -492,6 +515,8 @@ export class LiveAnalyzer {
       this.mel[c] = this.range(`mel${c}`, 1, 24).normalize(toDb(power[c]), dt);
       this.specRing[row * MEL_BANDS + c] = this.mel[c];
     }
+    this.melodyRing[row * 2] = v.pitch;
+    this.melodyRing[row * 2 + 1] = v.melody;
   }
 
   sample(t: number, out: Features, decays: Record<EventKind, number>): void {
@@ -499,6 +524,7 @@ export class LiveAnalyzer {
     for (const name of SCALAR_NAMES) out.scalars[name] = this.values[name];
     out.mel.set(this.mel);
     out.chroma.set(this.chroma);
+    out.timbreSlow.set(this.timbreSlow);
     out.energyTime = this.energyTime + Math.max(0, t - this.time) * energyRate(this.values.loudness, this.values.percussive);
     for (const kind of EVENT_KINDS) eventState(this.tracks[kind].track, t, decays[kind], kind, out);
     notePitchState(this.notePitches, out);
@@ -533,6 +559,19 @@ export class LiveAnalyzer {
         const vb = valid ? this.specRing[b * MEL_BANDS + c] : 0;
         out[r * MEL_BANDS + c] = va * (1 - w) + vb * w;
       }
+    }
+  }
+
+  /** Same contract as FeatureSampler.melodyLine: (pitch, melody) pairs, row 0 = now. */
+  melodyLine(t: number, rows: number, span: number, out: Float32Array): void {
+    const newest = this.frames - 1;
+    const len = this.specRows;
+    const at = (frame: number, c: number): number => (frame >= 0 ? this.melodyRing[(frame % len) * 2 + c] : 0);
+    for (let r = 0; r < rows; r++) {
+      const back = Math.min(len - 1, ((r / (rows - 1)) * span + Math.max(0, t - this.time)) * this.fps);
+      const i = Math.floor(back);
+      const w = back - i;
+      for (let c = 0; c < 2; c++) out[2 * r + c] = at(newest - i, c) * (1 - w) + at(newest - i - 1, c) * w;
     }
   }
 }

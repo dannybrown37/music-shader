@@ -117,6 +117,51 @@ export function melody(seconds: number, noteSeconds = 0.4, sr = SR): { audio: Fl
   return { audio, notes };
 }
 
+export interface SungNote {
+  start: number;
+  end: number;
+  midi: number;
+}
+
+/** Ten harmonics under a vowel-like formant bump near 800 Hz. */
+export function voiced(f0: number, seconds: number, amp = 0.3, sr = SR): Float32Array {
+  return sung(seconds, { notes: [f0ToMidi(f0)], noteSeconds: seconds, start: 0, amp, pad: false, sr }).audio;
+}
+
+const f0ToMidi = (f: number): number => 69 + 12 * Math.log2(f / 440);
+const midiToHz = (m: number): number => 440 * 2 ** ((m - 69) / 12);
+
+/**
+ * A voice-like line: legato notes of ten harmonics under a vowel formant, with optional
+ * vibrato (± semitones at 5.5 Hz). A3 C4 D4 E4 G4 A4 G4 E4 by default.
+ */
+export function sung(
+  seconds: number,
+  { vibrato = 0, noteSeconds = 0.5, start = 0.5, amp = 0.3, pad: withPad = true, notes: scale = [57, 60, 62, 64, 67, 69, 67, 64], sr = SR } = {},
+): { audio: Float32Array; notes: SungNote[] } {
+  const audio = withPad ? pad(seconds, 0.02, sr) : new Float32Array(Math.round(seconds * sr));
+  const notes: SungNote[] = [];
+  for (let i = 0; start + (i + 1) * noteSeconds <= seconds + 1e-9; i++) notes.push({ start: start + i * noteSeconds, end: start + (i + 1) * noteSeconds, midi: scale[i % scale.length] });
+  let phase = 0;
+  for (const note of notes) {
+    const s0 = Math.round(note.start * sr);
+    const n = Math.round((note.end - note.start) * sr);
+    for (let k = 0; k < n && s0 + k < audio.length; k++) {
+      const t = (s0 + k) / sr;
+      const f = midiToHz(note.midi + vibrato * Math.sin(2 * Math.PI * 5.5 * t));
+      phase += (2 * Math.PI * f) / sr;
+      const edge = Math.min(1, k / (0.01 * sr), (n - k) / (0.01 * sr));
+      let v = 0;
+      for (let h = 1; h <= 10; h++) {
+        const fh = f * h;
+        v += (Math.sin(phase * h) / h) * (1 + 2 * Math.exp(-(((fh - 800) / 300) ** 2)));
+      }
+      audio[s0 + k] += amp * 0.4 * edge * v;
+    }
+  }
+  return { audio, notes };
+}
+
 /**
  * Struck notes like a piano: a click of hammer noise, then rich slightly-stretched
  * harmonics that decay. Sharp 1–5 kHz attacks, but tonal ones; returns note start times.

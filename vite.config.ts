@@ -45,6 +45,8 @@ function musicLibrary(dir: string): Plugin {
 }
 
 export default defineConfig({
+  // GitHub Pages serves the site from /<repo>/; the deploy workflow sets BASE_PATH to that.
+  base: process.env.BASE_PATH ?? "/",
   plugins: [musicLibrary(process.env.MUSIC_DIR ?? "../deluge-quest/web/public/audio")],
   server: { port: 5173, strictPort: true },
   worker: { format: "es" },

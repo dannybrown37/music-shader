@@ -9,12 +9,12 @@
   <body>
     <canvas id="view"></canvas>
     <canvas id="hud"></canvas>
-    <div id="drop" hidden>Drop an audio file</div>
+    <div id="drop" hidden>Drop an audio file, cover art image, or .lrc lyrics</div>
     <div id="status" hidden></div>
     <div id="welcome" hidden>
       <h1>Music Shader</h1>
       <p>Pick a track in the panel, drop an audio file here, or press <kbd>O</kbd> to open one.</p>
-      <p class="keys"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> seek · <kbd>1</kbd>–<kbd>7</kbd> scenes · <kbd>P</kbd> palette · <kbd>B</kbd> browse presets · <kbd>R</kbd> surprise · <kbd>T</kbd> tempo ×2/÷2 · <kbd>C</kbd> record · <kbd>D</kbd> debug meters · <kbd>H</kbd> hide UI · <kbd>F</kbd> fullscreen</p>
+      <p class="keys"><kbd>Space</kbd> play · <kbd>←</kbd><kbd>→</kbd> seek · <kbd>1</kbd>–<kbd>9</kbd> <kbd>0</kbd> scenes · <kbd>K</kbd> add show cue · <kbd>P</kbd> palette · <kbd>B</kbd> browse presets · <kbd>R</kbd> surprise · <kbd>T</kbd> tempo ×2/÷2 · <kbd>C</kbd> record · <kbd>D</kbd> debug meters · <kbd>H</kbd> hide UI · <kbd>F</kbd> fullscreen</p>
     </div>
     <div id="browser" hidden>
       <div class="sheet">
@@ -22,6 +22,7 @@
         <div class="grid"></div>
       </div>
     </div>
+    <canvas id="timeline" hidden></canvas>
     <div id="transport">
       <button id="play" type="button" aria-label="Play">▶</button>
       <span id="time">0:00</span>

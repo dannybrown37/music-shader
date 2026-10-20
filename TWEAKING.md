@@ -23,6 +23,21 @@ Ordered from "no code" to "write a shader".
 - **Presets → Save current as preset** keeps it in the browser; *Download preset JSON*
   gives you a file you can edit, diff or share; *Import* reads one back. Unknown or
   malformed keys are ignored (`mergeSettings` in `src/settings.ts`).
+- **Presets → Copy share link**: the current look as a URL (the song's title stays out of it).
+  Opening the link loads that look.
+- **Reactivity → Melody / voice**: how bright the melody line (Tunnel's ribbons, Gauntlet's
+  sky line) and the voice glow are.
+- **Show (this song)**: when Auto VJ isn't the video you want, place the scene changes yourself.
+  Pick a scene (<kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd>), seek, press <kbd>K</kbd>: a cue lands on the nearest
+  downbeat. Click a block on the timeline above the transport bar to select its cue and change
+  its scene, palette or *arrives by* (crossfade or cut); drag a cue's left edge to move it (Alt:
+  no snapping); <kbd>Del</kbd> removes it. *Start from Auto VJ's choices* turns Auto VJ's
+  schedule into cues to edit. Shows are saved per song; *Download show JSON* keeps one safe.
+- **Overlay**: *Load cover art / logo…* (or drop an image on the page) shows it as a badge
+  that pulses on kicks, or as a dim backdrop under the scene. *Load lyrics (.lrc)…* (or drop
+  the .lrc) shows timed lines; lyrics are saved per song, art only until you reload.
+- **Export video → YouTube thumbnail (PNG)**: 1280×720 at the song's most intense moment,
+  with the title card.
 - Press <kbd>D</kbd> for the debug meters while tweaking: they show exactly which
   events and features are firing.
 
@@ -99,6 +114,7 @@ Uniform cheat-sheet (all in `common.glsl`):
 | `uLoud uIntensity uPerc uHarm` | loudness, slow loudness, percussive vs harmonic energy |
 | `uBright uNoisy uTonal uWidth uNovelty` | spectral centroid, flatness, pitchedness, stereo width, "something changed" |
 | `uTimbre` (vec3, −1..1) | instrument coordinates; a new sound moves this |
+| `uTimbreSlow` (vec3) | `uTimbre` averaged over the last second: follows the instrument, not each drum hit. Use it for geometry (see `tessellate.glsl`) |
 | `uKeyHue uKeyStrength uChroma[12]` | key on the circle of fifths |
 | `uBeatPhase uBarPhase uTempo` | 0..1 through the beat / 4-beat bar |
 | `uFlow` | time that runs faster when the music is busy; use it for motion |
@@ -106,6 +122,8 @@ Uniform cheat-sheet (all in `common.glsl`):
 | `uKickHist[16] uSnareHist[16] uHatHist[16] uNoteHist[16]` | last 16 hits as (age s, strength), newest first; age < 0 = empty |
 | `uNotePitch[16] uNoteCount` | pitch class (C = 0) of each `uNoteHist` note; note counter. See `particles.glsl` |
 | `spectrum(x)` / `spectrogram(x, age)` | mel spectrum 0..1, and its last 2 s |
+| `uMelody uPitch uVoice` | how clear the lead line is; its pitch 0..1 across the song's range (holds when silent); how voice-like it wavers |
+| `melodyLine(age)` | `vec2(pitch, melody)` of the lead line `age` (0..1 = now..2 s) ago. See `tunnel.glsl`, `gauntlet.glsl` |
 | `palette(t)` / `ramp(t)` | cyclic palette / dark→highlight ramp of the current palette |
 
 **Hot reload:** with `just dev` running and a song playing, save any
@@ -121,6 +139,9 @@ just dev   # in another terminal
 just shot --scene pulse --t 45,60,90 --out out/pulse.png        # stills at three times
 just shot --scene pulse --t 59.95 --sheet 12 --w 320 --h 180    # 12 consecutive frames around a hit
 ```
+
+`just smoke` compiles every scene and draws a frame of each in headless Chrome; CI runs it
+on every push, so a scene that doesn't compile can't reach `main` unnoticed.
 
 Keep frames **dark with bright structure**. Bloom and ACES reward highlights above 1.0,
 and YouTube's compression punishes large mid-grey areas and fine noise. Measure your
@@ -149,6 +170,25 @@ The PNG shows the spectrogram, then one lane per detector (faint curve = onset
 function, bright ticks = detected events), then the continuous features. Grey lines are
 beats, white lines downbeats, magenta lines section changes. Then run `just test`: the
 synthetic-drum tests in `src/analysis/*.test.ts` catch regressions.
+
+### Melody and voice
+
+`src/analysis/pitch.ts`, shared by offline and live like `bands.ts`:
+
+- `PITCH_MIN` / `PITCH_MAX`: the range a lead line may be in (A2–C6). Bass lines sit below on purpose.
+- `CLARITY_NONE` / `CLARITY_FULL`: how much of the spectrum one harmonic series must explain to
+  count as a melody. Dense EDM mixes rarely pass 0.35; a solo flute does. Lower both to see
+  more melody in busy mixes (and more false lines).
+- `SUSTAIN_NONE` / `SUSTAIN_FULL`: the share of sustained (HPSS harmonic) energy needed. This keeps
+  a kick's pitch sweep from reading as a tune.
+- `JUMP_FIXED` / `JUMP_COST`: how much the pitch line resists jumping between candidates.
+- `WOBBLE_NONE` / `WOBBLE_FULL`: vibrato depth (semitones RMS) for *voice*. The wobble is low-passed
+  first: two close partials beating (a chorus, unison layers) jitter the pitch at ~20 Hz, which
+  isn't a voice.
+
+*Voice* means "a melody that wavers like a singer": vibrato. Violin and bends count too; hard-tuned
+pop vocals may not. On this instrumental library it is near zero almost everywhere, which is right.
+The analysis PNG's last lane shows melody (grey), pitch (orange) and voice (pink).
 
 ## 5. Palettes
 

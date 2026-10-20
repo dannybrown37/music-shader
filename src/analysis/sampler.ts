@@ -29,7 +29,12 @@ export interface Features {
   barPhase: number;
   mel: Float32Array;
   chroma: Float32Array;
+  /** timbreX/Y/Z averaged over the last TIMBRE_SLOW_SECONDS: follows the instrument, not each hit. */
+  timbreSlow: Float32Array;
 }
+
+export const TIMBRE_SLOW_SECONDS = 1;
+const TIMBRE_AXES = ["timbreX", "timbreY", "timbreZ"] as const;
 
 const record = <T>(keys: readonly string[], make: () => T): Record<string, T> => Object.fromEntries(keys.map((k) => [k, make()]));
 
@@ -49,6 +54,7 @@ export function createFeatures(): Features {
     barPhase: 0,
     mel: new Float32Array(MEL_BANDS),
     chroma: new Float32Array(12),
+    timbreSlow: new Float32Array(3),
   };
 }
 
@@ -155,9 +161,15 @@ export class FeatureSampler {
   private readonly energyPrefix: Float64Array;
   private downbeatCache: { times: Float32Array; intensity: Float32Array } | null = null;
   private readonly notePitches: Float32Array;
+  private readonly timbrePrefix: Float64Array[];
 
   constructor(analysis: TrackAnalysis) {
     this.analysis = analysis;
+    this.timbrePrefix = TIMBRE_AXES.map((name) => {
+      const prefix = new Float64Array(analysis.frames + 1);
+      for (let i = 0; i < analysis.frames; i++) prefix[i + 1] = prefix[i] + analysis.scalars[name][i];
+      return prefix;
+    });
     const { loudness, percussive } = analysis.scalars;
     this.energyPrefix = new Float64Array(analysis.frames + 1);
     for (let i = 0; i < analysis.frames; i++) {
@@ -187,6 +199,8 @@ export class FeatureSampler {
     const rateHere = energyRate(a.scalars.loudness[i], a.scalars.percussive[i]);
     const rateNow = energyRate(out.scalars.loudness, out.scalars.percussive);
     out.energyTime = this.energyPrefix[i] + ((rateHere + rateNow) / 2) * ((pos - i) / a.fps);
+    const from = Math.max(0, i + 1 - Math.round(TIMBRE_SLOW_SECONDS * a.fps));
+    this.timbrePrefix.forEach((prefix, d) => (out.timbreSlow[d] = (prefix[i + 1] - prefix[from]) / (i + 1 - from)));
     for (const kind of EVENT_KINDS) eventState(a.events[kind], t, decays[kind], kind, out);
     notePitchState(this.notePitches, out);
     beatState(a.events.beat.times, a.events.downbeat.times, a.tempo, t, out);
@@ -215,6 +229,20 @@ export class FeatureSampler {
       const j = Math.min(a.frames - 1, i + 1);
       const w = pos - i;
       for (let b = 0; b < MEL_BANDS; b++) out[r * MEL_BANDS + b] = a.mel[i * MEL_BANDS + b] * (1 - w) + a.mel[j * MEL_BANDS + b] * w;
+    }
+  }
+
+  /** Fills `out` (rows × 2) with the melody line history as (pitch, melody): row 0 = t, last row = t - span. */
+  melodyLine(t: number, rows: number, span: number, out: Float32Array): void {
+    const a = this.analysis;
+    const { pitch, melody } = a.scalars;
+    for (let r = 0; r < rows; r++) {
+      const pos = Math.max(0, Math.min(a.frames - 1, (t - (r / (rows - 1)) * span) * a.fps));
+      const i = Math.floor(pos);
+      const j = Math.min(a.frames - 1, i + 1);
+      const w = pos - i;
+      out[2 * r] = pitch[i] + (pitch[j] - pitch[i]) * w;
+      out[2 * r + 1] = melody[i] + (melody[j] - melody[i]) * w;
     }
   }
 }

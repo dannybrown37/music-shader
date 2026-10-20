@@ -81,6 +81,7 @@ const SCALAR_GROUPS: { names: ScalarName[]; colors: RGB[] }[] = [
   { names: ["loudness", "intensity", "percussive", "harmonic"], colors: [[255, 255, 255], [255, 120, 200], [255, 120, 60], [80, 200, 255]] },
   { names: ["brightness", "noisiness", "tonalness", "width"], colors: [[255, 230, 120], [180, 180, 180], [120, 255, 160], [255, 120, 255]] },
   { names: ["timbreX", "timbreY", "timbreZ", "novelty"], colors: [[255, 90, 90], [90, 255, 90], [90, 140, 255], [255, 255, 255]] },
+  { names: ["melody", "pitch", "voice"], colors: [[120, 120, 120], [255, 170, 60], [255, 90, 200]] },
 ];
 
 function plot(a: TrackAnalysis, from: number, seconds: number, out: string): void {
@@ -168,7 +169,9 @@ function main(): void {
   const t2 = performance.now();
   const name = path.split("/").pop();
   const counts = EVENT_KINDS.map((k) => `${k}=${a.events[k].times.length}`).join(" ");
-  console.log(`${name} | ${a.duration.toFixed(1)}s | tempo ${a.tempo.toFixed(1)} | ${counts} | decode ${(t1 - t0).toFixed(0)}ms analyze ${(t2 - t1).toFixed(0)}ms`);
+  const avg = (x: Float32Array): string => (x.reduce((s, v) => s + v, 0) / x.length).toFixed(2);
+  const lines = `melody ${avg(a.scalars.melody)} voice ${avg(a.scalars.voice)}`;
+  console.log(`${name} | ${a.duration.toFixed(1)}s | tempo ${a.tempo.toFixed(1)} | ${counts} | ${lines} | decode ${(t1 - t0).toFixed(0)}ms analyze ${(t2 - t1).toFixed(0)}ms`);
   if (values.png) plot(a, Number(values.from), Number(values.seconds), values.png);
 }
 

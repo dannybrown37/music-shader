@@ -9,6 +9,7 @@ uniform float p_rings;
 uniform float p_segments;
 uniform float p_spectrum;
 uniform float p_streaks;
+uniform float p_melody;
 
 const float RING_SPAWN = 7.0;
 const float RING_SPEED = 5.0;
@@ -71,6 +72,20 @@ void main() {
     rings += k.y * exp(-abs(z - zr) * 6.0) * smoothstep(0.2, 1.0, zr);
   }
   wall += ramp(0.95) * rings * p_rings * 1.4;
+
+  // Melody ribbons: painted far away as the line sounds, then carried toward you like the rings.
+  // Angle is pitch (low by the bass side of the wall, high by the treble side), mirrored top and bottom.
+  float age = (RING_SPAWN - z) / RING_SPEED / 2.0;
+  if (age > 0.0 && age < 1.0) {
+    vec2 ml = melodyLine(age);
+    float d = abs(abs(aa) - PI * (1.0 - ml.x));
+    float width = 0.035 + 0.035 * uVoice;
+    float core = smoothstep(width, width * 0.4, d);
+    float glow = exp(-d / (width * 3.0)) * 0.25;
+    float shimmer = 1.0 + 0.6 * uVoice * sin(z * 24.0 - uTime * 9.0);
+    float fadeIn = smoothstep(0.0, 0.04, age) * smoothstep(1.0, 0.7, age);
+    wall += mix(ramp(0.9), vec3(1.0, 0.85, 0.7), 0.4 * uVoice) * (core + glow) * smoothstep(0.15, 0.5, ml.y) * shimmer * fadeIn * p_melody * 1.6;
+  }
 
   float lane = floor((aa / TAU + 0.5) * 48.0);
   float streakOn = step(1.0 - 0.12 * p_streaks, hash11(lane * 1.7 + floor(uCount.z) * 13.1));

@@ -5,9 +5,11 @@ import { builtinPresets } from "./presets.ts";
 import { PALETTES } from "./render/palettes.ts";
 import { SCENES } from "./render/scenes/index.ts";
 import { mergeSettings } from "./settings.ts";
+import { decodeShare } from "./share.ts";
 import { LiveRecorder } from "./export/recorder.ts";
 import { PresetBrowser } from "./ui/browser.ts";
 import { Panel } from "./ui/panel.ts";
+import { Timeline } from "./ui/timeline.ts";
 
 const $ = <T extends HTMLElement>(id: string): T => {
   const el = document.getElementById(id);
@@ -44,6 +46,10 @@ async function main(): Promise<void> {
 
   if (params.has("still")) {
     await runStill(app, params);
+    return;
+  }
+  if (params.has("smoke")) {
+    runSmoke(app);
     return;
   }
 
@@ -105,6 +111,12 @@ async function main(): Promise<void> {
     },
   });
 
+  const timeline = new Timeline($("timeline"), app);
+  panel.attachTimeline(timeline);
+  app.onShowChanged = (): void => {
+    if (timeline.selected !== null && !timeline.selectedCue) timeline.select(null);
+  };
+
   browser = new PresetBrowser(
     $("browser"),
     app,
@@ -121,7 +133,7 @@ async function main(): Promise<void> {
   };
 
   wireTransport(app);
-  wireDragDrop(app);
+  wireDragDrop(app, panel);
   wireKeys(app, panel, browser, openFile);
   wireIdle(app);
   app.start();
@@ -132,6 +144,12 @@ async function main(): Promise<void> {
   }
   const scene = SCENES.find((x) => x.id === params.get("scene"));
   if (scene) panel.applyPreset(scene.name);
+  const shared = decodeShare(location.hash);
+  if (shared) {
+    panel.replaceSettings(mergeSettings(app.settings, shared));
+    history.replaceState(null, "", location.pathname + location.search);
+    showStatus("Loaded a shared look. Save it under Presets to keep it");
+  }
   const initial = params.get("track");
   if (initial) app.loadTrackByName(initial).catch((err: unknown) => showStatus(String(err), true));
   const live = params.get("live");
@@ -167,7 +185,8 @@ function wireTransport(app: App): void {
   tick();
 }
 
-function wireDragDrop(app: App): void {
+/** Drop audio to load it, an image for cover art, or an .lrc file for lyrics. */
+function wireDragDrop(app: App, panel: Panel): void {
   const drop = $("drop");
   let depth = 0;
   window.addEventListener("dragenter", (e) => {
@@ -184,7 +203,10 @@ function wireDragDrop(app: App): void {
     depth = 0;
     drop.hidden = true;
     const file = e.dataTransfer?.files[0];
-    if (file) app.loadFile(file).catch((err: unknown) => showStatus(String(err), true));
+    if (!file) return;
+    if (file.type.startsWith("image/")) panel.loadArt(file);
+    else if (/\.lrc$/i.test(file.name)) panel.loadLyrics(file);
+    else app.loadFile(file).catch((err: unknown) => showStatus(String(err), true));
   });
 }
 
@@ -217,13 +239,15 @@ function wireKeys(app: App, panel: Panel, browser: PresetBrowser, openFile: () =
     else if (e.key === "r" || e.key === "R") panel.surprise();
     else if (e.key === "t" || e.key === "T") panel.cycleTempo();
     else if (e.key === "c" || e.key === "C") void toggleRecording(app);
+    else if (e.key === "k" || e.key === "K") panel.addCue();
+    else if (e.key === "Delete" || e.key === "Backspace") panel.deleteSelectedCue();
     else if (e.key === "p" || e.key === "P") {
       const i = PALETTES.findIndex((p) => p.name === s.palette);
       s.palette = PALETTES[(i + 1) % PALETTES.length].name;
       panel.gui.controllersRecursive().forEach((c) => c.updateDisplay());
       showStatus(`Palette: ${s.palette}`);
-    } else if (/^[1-9]$/.test(e.key)) {
-      const scene = SCENES[Number(e.key) - 1];
+    } else if (/^[0-9]$/.test(e.key)) {
+      const scene = SCENES[(Number(e.key) + 9) % 10];
       if (scene) panel.applyPreset(scene.name);
     } else return;
     app.settingsChanged();
@@ -269,7 +293,10 @@ function wireIdle(app: App): void {
   wake();
 }
 
-/** ?still&track=NAME&t=SECONDS[&scene=ID&w=640&h=360&warm=1&fps=30]: renders one frame, then sets the title to "ready". */
+/**
+ * ?still&track=NAME&t=SECONDS[&scene=ID&w=640&h=360&warm=1&fps=30]: renders one frame, then sets the title to "ready".
+ * &art=URL and &lrc=URL load cover art and lyrics first; &thumbnail renders the YouTube thumbnail instead.
+ */
 async function runStill(app: App, params: URLSearchParams): Promise<void> {
   document.body.classList.add("still");
   const scene = params.get("scene");
@@ -282,6 +309,15 @@ async function runStill(app: App, params: URLSearchParams): Promise<void> {
   applyOverrides(app, params.get("set"));
   const track = params.get("track");
   if (track) await app.loadTrackByName(track);
+  const art = params.get("art");
+  if (art) await app.setArt(await (await fetch(art)).blob());
+  const lrc = params.get("lrc");
+  if (lrc) app.setLyrics(await (await fetch(lrc)).text());
+  if (params.has("thumbnail")) {
+    await app.renderYouTubeThumbnail();
+    document.title = "ready";
+    return;
+  }
   const num = (k: string, d: number): number => (params.has(k) ? Number(params.get(k)) : d);
   const [t, w, h, fps] = [num("t", 30), num("w", 640), num("h", 360), num("fps", 30)];
   if (params.has("export")) {
@@ -292,6 +328,24 @@ async function runStill(app: App, params: URLSearchParams): Promise<void> {
   console.info(`adapted luminance ${app.renderer.adaptedLuminance().toFixed(4)} glError ${app.renderer.gl.getError()}`);
   const frames = num("sheet", 0);
   if (frames > 0) renderSheet(app, t, w, h, fps, frames);
+  document.title = "ready";
+}
+
+/** ?smoke: compiles every scene and draws a frame of each; per-scene errors land in window.__smoke for tools/smoke.ts. */
+function runSmoke(app: App): void {
+  document.body.classList.add("still");
+  const results = SCENES.map((scene) => {
+    try {
+      app.settings.scene = scene.id;
+      app.applyScene();
+      app.renderStill(1, 320, 180, 0.2, 30);
+      const glError = app.renderer.gl.getError();
+      return { id: scene.id, error: glError === 0 ? "" : `WebGL error 0x${glError.toString(16)}` };
+    } catch (err: unknown) {
+      return { id: scene.id, error: err instanceof Error ? err.message : String(err) };
+    }
+  });
+  (window as unknown as { __smoke: typeof results }).__smoke = results;
   document.title = "ready";
 }
 
