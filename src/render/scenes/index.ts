@@ -2,6 +2,7 @@ import type { LookKey } from "../../settings.ts";
 import ensemble from "./ensemble.glsl?raw";
 import gauntlet from "./gauntlet.glsl?raw";
 import kaleido from "./kaleido.glsl?raw";
+import mosaic from "./mosaic.glsl?raw";
 import nebula from "./nebula.glsl?raw";
 import orb from "./orb.glsl?raw";
 import particles from "./particles.glsl?raw";
@@ -189,6 +190,23 @@ export const SCENES: SceneDef[] = [
     look: { feedback: 0.25, feedbackZoom: 0.0, feedbackSpin: 0, bloom: 1.3, bloomThreshold: 0.6, chromatic: 0.8 },
     palette: "Synthwave",
     exposureKey: 0.03,
+  },
+  {
+    id: "mosaic",
+    name: "Mosaic",
+    description: "Every hit drops a shape shaped by its timbre until the screen is full, then they all fall away and it starts over",
+    source: mosaic,
+    params: [
+      { key: "size", label: "Shape size (fills faster)", min: 0.4, max: 2, value: 1, steady: true },
+      { key: "glow", label: "Glow with their sound", min: 0, max: 3, value: 1 },
+      { key: "breathe", label: "Breathe with their sound", min: 0, max: 3, value: 1 },
+      { key: "glints", label: "Hat glints", min: 0, max: 3, value: 1 },
+      { key: "fall", label: "Fall speed", min: 0.3, max: 3, value: 1 },
+      { key: "spin", label: "Drift spin", min: 0, max: 3, value: 1 },
+    ],
+    look: { feedback: 0.2, feedbackZoom: 0.0, feedbackSpin: 0, bloom: 1.1, bloomThreshold: 0.65, chromatic: 0.5 },
+    palette: "Neon",
+    exposureKey: 0.04,
   },
 ];
 

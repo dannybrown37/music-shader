@@ -2,6 +2,7 @@ import { MEL_BANDS } from "../analysis/frame.ts";
 import type { Settings } from "../settings.ts";
 import { createTarget, DataTexture, deleteTarget, FullscreenTriangle, Program } from "./gl.ts";
 import type { Target, UniformValue } from "./gl.ts";
+import { MAX_SHAPES, TEXELS_PER_SHAPE } from "./mosaic.ts";
 import type { SceneDef } from "./scenes/index.ts";
 import bloomSource from "./shaders/bloom.glsl?raw";
 import common from "./shaders/common.glsl?raw";
@@ -32,6 +33,8 @@ export class Renderer {
   readonly canvas: HTMLCanvasElement;
   readonly spectrum: DataTexture;
   readonly spectrogram: DataTexture;
+  /** Mosaic's shape records (see mosaic.ts); other scenes don't declare uShapes. */
+  readonly shapes: DataTexture;
   private readonly tri: FullscreenTriangle;
   private readonly feedback: Program;
   private readonly bloom: Program;
@@ -72,6 +75,7 @@ export class Renderer {
     this.resetAdaptation();
     this.spectrum = new DataTexture(gl, MEL_BANDS, 1);
     this.spectrogram = new DataTexture(gl, MEL_BANDS, SPECTROGRAM_ROWS);
+    this.shapes = new DataTexture(gl, TEXELS_PER_SHAPE, MAX_SHAPES, true);
     this.overlayTexture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.overlayTexture);
     gl.texImage2D(gl.TEXTURE_2D, 0, gl.RGBA, 1, 1, 0, gl.RGBA, gl.UNSIGNED_BYTE, new Uint8Array([0, 0, 0, 0]));
@@ -150,6 +154,7 @@ export class Renderer {
     program.set("uSpectrum", this.spectrum.texture);
     program.set("uSpectrogram", this.spectrogram.texture);
     program.set("uPrev", prev.texture);
+    program.set("uShapes", this.shapes.texture);
     this.tri.draw(target);
   }
 

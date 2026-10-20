@@ -53,6 +53,7 @@ MUSIC_DIR=~/Music just dev    # use a different folder
 | 6 | **Ensemble** | one visual voice per part: kick → rings · snare → shards · hats → sparks · harmony → 12-note wheel on the circle of fifths · spectrum → ring, and its last 2 s ripple outward as lit cells · bass → core |
 | 7 | **Particles** | kick → ember bursts · snare → motion-blurred spark fans · hats → glitter · each note → an orb launched from its pitch on the circle of fifths, joined to the previous note (melodies draw constellations) · spectrum → a fountain of motes (bass left) carrying the last 2 s up the screen, flipped by section |
 | 8 | **Gauntlet** | Terrain with a ship on the road · each snare → an obstacle rolling in from the horizon: pylons it slides past, spinning mines it blasts with twin lasers (*Shots between dodges* sets the mix) · kick → land waves + sun pulse · hats → lane lights |
+| 9 | **Mosaic** | each kick / snare / note drops a shape wherever it still fits, until the screen is full (then each hit re-flashes the shape most like it); on the next downbeat they all fall away and it starts over (a section change clears it early) · shape = timbre: bright → more corners, noisy → spiky star, pitched → round · colour = instrument (timbre) · kicks solid, snares hollow, notes inset · each shape keeps breathing with its own sound (notes with their pitch) · hats → glints round every edge |
 
 Every scene also gets trails, bloom, chromatic aberration, auto-exposure, grain and
 vignette from the shared post-processing (*Look* folder).

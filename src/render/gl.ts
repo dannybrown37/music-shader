@@ -148,16 +148,20 @@ export class DataTexture {
   readonly width: number;
   readonly height: number;
   private readonly gl: WebGL2RenderingContext;
+  private readonly format: GLenum;
 
-  constructor(gl: WebGL2RenderingContext, width: number, height: number) {
+  /** `records`: exact RGBA32F texels for texelFetch (no filtering) instead of a filtered single channel. */
+  constructor(gl: WebGL2RenderingContext, width: number, height: number, records = false) {
     this.gl = gl;
     this.width = width;
     this.height = height;
+    this.format = records ? gl.RGBA : gl.RED;
     this.texture = gl.createTexture();
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.texImage2D(gl.TEXTURE_2D, 0, gl.R16F, width, height, 0, gl.RED, gl.FLOAT, null);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, gl.LINEAR);
-    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, gl.LINEAR);
+    gl.texImage2D(gl.TEXTURE_2D, 0, records ? gl.RGBA32F : gl.R16F, width, height, 0, this.format, gl.FLOAT, null);
+    const filter = records ? gl.NEAREST : gl.LINEAR;
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MIN_FILTER, filter);
+    gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_MAG_FILTER, filter);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_S, gl.CLAMP_TO_EDGE);
     gl.texParameteri(gl.TEXTURE_2D, gl.TEXTURE_WRAP_T, gl.CLAMP_TO_EDGE);
   }
@@ -165,7 +169,7 @@ export class DataTexture {
   upload(data: Float32Array): void {
     const gl = this.gl;
     gl.bindTexture(gl.TEXTURE_2D, this.texture);
-    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.width, this.height, gl.RED, gl.FLOAT, data);
+    gl.texSubImage2D(gl.TEXTURE_2D, 0, 0, 0, this.width, this.height, this.format, gl.FLOAT, data);
   }
 }
 

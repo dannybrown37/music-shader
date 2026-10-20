@@ -84,6 +84,11 @@ Gauntlet's dodge plan lives twice: in `gauntlet.glsl` and in `src/render/gauntle
 where tests check over random snare patterns that the ship never brushes a pylon. Change
 both together.
 
+Mosaic's layout is planned only in TypeScript (`src/render/mosaic.ts`): where each shape goes
+depends on every earlier one, which a shader can't remember. The app packs the shapes on screen
+into the `uShapes` texture each frame; `mosaic.glsl` just draws them. Packing, fill/drain timing
+and the timbre → shape mapping (`shapeGeometry`) are tuned at the top of that file.
+
 Uniform cheat-sheet (all in `common.glsl`):
 
 | Uniform | Meaning |

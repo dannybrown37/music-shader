@@ -11,6 +11,7 @@ import { LiveInput } from "./audio/live-input.ts";
 import type { LiveSource } from "./audio/live-input.ts";
 import { Player } from "./audio/player.ts";
 import { loadCurrent, saveCurrent, sceneParamsFor } from "./presets.ts";
+import { eventsFromAnalysis, LiveMosaicFeed, MAX_SHAPES, MosaicPlanner, TEXELS_PER_SHAPE } from "./render/mosaic.ts";
 import { QualityGovernor } from "./render/quality.ts";
 import { Reactor, sectionParams } from "./render/reactivity.ts";
 import { Renderer, SPECTROGRAM_ROWS } from "./render/renderer.ts";
@@ -77,6 +78,8 @@ export class App {
   activeScene = "";
   private readonly quality = new QualityGovernor(1);
   private readonly spectrogramData = new Float32Array(MEL_BANDS * SPECTROGRAM_ROWS);
+  private mosaic: { source: FeatureSource | null; size: number; planner: MosaicPlanner; feed: LiveMosaicFeed } | null = null;
+  private readonly shapeData = new Float32Array(MAX_SHAPES * TEXELS_PER_SHAPE * 4);
   private lastFrame = performance.now();
   private lastTime = 0;
   private overlayKey = "";
@@ -291,9 +294,31 @@ export class App {
       this.activeScene = scene.id;
     }
     const uniforms = this.reactor.build(f, s, this.paramsNow(scene));
+    if (scene.id === "mosaic" || fade?.scene.id === "mosaic") {
+      const shapes = this.updateMosaic(t, source);
+      uniforms.uShapeCount = shapes;
+      if (fade) fade.uniforms.uShapeCount = shapes;
+    }
     this.updateOverlay();
     const alpha = s.overlay.showTitle && this.sampler && !this.live ? titleAlpha(t - this.titleStart) : 0;
     this.renderer.render(uniforms, s.look, alpha, dt, fade);
+  }
+
+  /**
+   * Mosaic's shape layout depends on every earlier hit: a file is planned once from its whole
+   * analysis, live input feeds the planner frame by frame. Re-planned when the source or size changes.
+   */
+  private updateMosaic(t: number, source: FeatureSource | null): number {
+    const size = sceneParamsFor(this.settings, "mosaic").size;
+    if (!this.mosaic || this.mosaic.source !== source || this.mosaic.size !== size) {
+      const planner = new MosaicPlanner({ size });
+      if (source === this.sampler && this.analysis) for (const e of eventsFromAnalysis(this.analysis)) planner.push(e);
+      this.mosaic = { source, size, planner, feed: new LiveMosaicFeed() };
+    }
+    if (source && source !== this.sampler) this.mosaic.feed.update(this.features, this.mosaic.planner);
+    const n = this.mosaic.planner.visible(t, this.shapeData);
+    this.renderer.shapes.upload(this.shapeData);
+    return n;
   }
 
   /** The scene's params as set in the panel, nudged by the current section's look. */
