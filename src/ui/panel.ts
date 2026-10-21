@@ -4,7 +4,7 @@ import type { App } from "../app.ts";
 import { builtinPresets, loadUserPresets, saveUserPresets, sceneParamsFor } from "../presets.ts";
 import { PALETTES } from "../render/palettes.ts";
 import { SCENES, sceneById } from "../render/scenes/index.ts";
-import { ART_MODES, ART_SIZE, AUTO_CUT_BARS, DECAY_RANGES, LOOK_RANGES, mergeSettings, REACTIVITY_RANGES } from "../settings.ts";
+import { ART_MODES, ART_SIZE, AUTO_CUT_BARS, DECAY_RANGES, LOOK_RANGES, mergeSettings, OUTRO_RANGE, REACTIVITY_RANGES } from "../settings.ts";
 import type { Range, Settings } from "../settings.ts";
 import { EXPORT_RESOLUTIONS } from "../export/video.ts";
 import type { TempoFactor } from "../analysis/beats.ts";
@@ -13,6 +13,8 @@ import { parseShow, removeCue, setCue, snapToBar } from "../render/show.ts";
 import type { Cue } from "../render/show.ts";
 import type { Timeline } from "./timeline.ts";
 import { encodeShare } from "../share.ts";
+
+const POSTER_SIZE = 2160;
 
 const KEEP_PALETTE = "(preset's)";
 
@@ -143,7 +145,9 @@ export class Panel {
     exp.add(this.exportState, "end", 0, 3600, 0.1).name("End (s, 0 = song end)");
     exp.add({ go: () => actions.exportVideo({ ...this.exportState }) }, "go").name("Render video…");
     exp.add({ rec: actions.toggleRecording }, "rec").name("Record live, start / stop (C)");
-    exp.add({ thumb: () => void this.saveThumbnail() }, "thumb").name("YouTube thumbnail (PNG)");
+    exp.add({ thumb: () => void this.savePng(() => this.app.renderYouTubeThumbnail(), "thumbnail") }, "thumb").name("YouTube thumbnail (PNG)");
+    exp.add({ poster: () => void this.savePng(() => this.app.renderPoster(POSTER_SIZE, POSTER_SIZE), "poster") }, "poster").name("Song poster (PNG)");
+    exp.add(s.overlay, "outro", OUTRO_RANGE.min, OUTRO_RANGE.max, 1).name(OUTRO_RANGE.label).onChange(changed).domElement.title = OUTRO_RANGE.help;
     exp.close();
 
     app.hud.visible = s.overlay.showHud;
@@ -288,16 +292,16 @@ export class Panel {
     else this.app.onStatus(name ? `${lines} lyric lines from ${name}` : "Lyrics cleared");
   }
 
-  private async saveThumbnail(): Promise<void> {
+  private async savePng(render: () => Promise<Blob>, what: string): Promise<void> {
     try {
-      const blob = await this.app.renderYouTubeThumbnail();
+      const blob = await render();
       const a = document.createElement("a");
       a.href = URL.createObjectURL(blob);
-      a.download = `${this.app.settings.overlay.title || "music-shader"} thumbnail.png`;
+      a.download = `${this.app.settings.overlay.title || "music-shader"} ${what}.png`;
       a.click();
       URL.revokeObjectURL(a.href);
     } catch (err: unknown) {
-      this.app.onStatus(`Thumbnail failed: ${err instanceof Error ? err.message : String(err)}`, true);
+      this.app.onStatus(`Saving the ${what} failed: ${err instanceof Error ? err.message : String(err)}`, true);
     }
   }
 

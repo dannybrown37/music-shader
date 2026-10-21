@@ -1,5 +1,8 @@
+import type { Cast } from "./cast.ts";
+import type { Key } from "./key.ts";
+
 /** Bump whenever analysis output changes, so cached analyses (src/audio/cache.ts) are recomputed. */
-export const ANALYSIS_VERSION = 3;
+export const ANALYSIS_VERSION = 4;
 
 /**
  * Continuous per-frame features. All are 0..1 except `timbre*` and `hue*`, which are -1..1.
@@ -42,11 +45,13 @@ export const SCALAR_NAMES = [
   "pitch",
   /** A melody that wavers like a voice (vibrato): singing, also violin and bends. Hard-tuned vocals may not count. */
   "voice",
+  /** 0 → 1 through a build-up, the bars leading into a drop; 0 from the drop on. Offline only (live stays 0). */
+  "build",
 ] as const;
 
 export type ScalarName = (typeof SCALAR_NAMES)[number];
 
-export const EVENT_KINDS = ["kick", "snare", "hat", "onset", "note", "beat", "downbeat", "section"] as const;
+export const EVENT_KINDS = ["kick", "snare", "hat", "onset", "note", "beat", "downbeat", "section", "drop"] as const;
 export type EventKind = (typeof EVENT_KINDS)[number];
 
 export interface EventTrack {
@@ -68,6 +73,9 @@ export interface TrackAnalysis {
   /** frames × 12, max-normalised per frame. */
   chroma: Float32Array;
   events: Record<EventKind, EventTrack>;
+  /** The song's recurring sounds, so each keeps one colour everywhere (see cast.ts). */
+  cast: Cast;
+  key: Key;
   /** Raw onset detection functions behind the detected events, kept for plotting and tuning. */
   odfs: Record<DetectorKind, Float32Array>;
   /** Intermediate per-frame signals worth inspecting when tuning (see tools/analyze.ts). */

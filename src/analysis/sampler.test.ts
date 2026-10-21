@@ -3,6 +3,7 @@ import { createFeatures, dominantPitch, FeatureSampler } from "./sampler.ts";
 import { EVENT_KINDS, SCALAR_NAMES } from "./types.ts";
 import type { EventKind, TrackAnalysis } from "./types.ts";
 import { MEL_BANDS } from "./frame.ts";
+import { emptyCast, MAX_CAST } from "./cast.ts";
 
 function fakeAnalysis(): TrackAnalysis {
   const fps = 10;
@@ -23,6 +24,8 @@ function fakeAnalysis(): TrackAnalysis {
     mel: new Float32Array(frames * MEL_BANDS).fill(0.5),
     chroma: new Float32Array(frames * 12).fill(0.25),
     events,
+    cast: emptyCast(),
+    key: { tonic: 0, minor: false, confidence: 0, name: "C major" },
     odfs: { kick: new Float32Array(frames), snare: new Float32Array(frames), hat: new Float32Array(frames), onset: new Float32Array(frames), note: new Float32Array(frames) },
     debug: {},
   };
@@ -127,6 +130,58 @@ describe("FeatureSampler", () => {
     const g = createFeatures();
     new FeatureSampler(a).sample(2.5, g, decays);
     expect(Array.from(g.notePitch.slice(0, 3))).toEqual([2, 7, -1]);
+  });
+});
+
+describe("FeatureSampler cast and choreography", () => {
+  const decays = Object.fromEntries(EVENT_KINDS.map((k) => [k, 0.1])) as Record<EventKind, number>;
+
+  /** 10 s, two cast members: member 0 for 0–5 s, member 1 for 5–10 s, in 1 s blocks. */
+  function withCast(): TrackAnalysis {
+    const a = fakeAnalysis();
+    const blocks = 10;
+    const weights = new Float32Array(blocks * MAX_CAST);
+    const ids = new Int8Array(blocks);
+    for (let b = 0; b < blocks; b++) {
+      ids[b] = b < 5 ? 0 : 1;
+      weights[b * MAX_CAST + ids[b]] = 1;
+    }
+    const member = { firstSeen: 0, share: 0.5, brightness: 0.5, noisiness: 0.5, tonalness: 0.5, voice: 0, label: "mid tone" };
+    a.cast = { members: [member, { ...member, firstSeen: 5 }], blockSeconds: 1, maxMembers: MAX_CAST, ids, weights };
+    return a;
+  }
+
+  it.each([
+    [2.5, [1, 0]],
+    [5, [0.5, 0.5]],
+    [8, [0, 1]],
+  ])("weights each cast member by how much it sounds at %f s", (t, expected) => {
+    const f = createFeatures();
+    new FeatureSampler(withCast()).sample(t, f, decays);
+    expect(Array.from(f.cast.slice(0, 2)).map((v) => Number(v.toFixed(2)))).toEqual(expected);
+  });
+
+  it("tags each recent note with the cast member playing it, newest first", () => {
+    const a = withCast();
+    a.events.note = { times: Float32Array.from([1, 7]), strengths: Float32Array.from([1, 1]) };
+    const f = createFeatures();
+    new FeatureSampler(a).sample(8, f, decays);
+    expect(Array.from(f.noteCast.slice(0, 3))).toEqual([1, 0, -1]);
+  });
+
+  it("slows the choreography clock through a build and surges it after a drop", () => {
+    const a = fakeAnalysis();
+    a.scalars.build = Float32Array.from({ length: a.frames }, (_, i) => (i < 50 ? i / 50 : 0));
+    a.events.drop = { times: Float32Array.from([5]), strengths: Float32Array.from([1]) };
+    const sampler = new FeatureSampler(a);
+    const f = createFeatures();
+    const at = (t: number): number => {
+      sampler.sample(t, f, decays);
+      return f.choreoTime;
+    };
+    expect(at(4.9)).toBeLessThan(at(3));
+    expect(at(6) - at(5)).toBeGreaterThan(0.5);
+    expect(at(9.9) - at(9)).toBeLessThan(at(6) - at(5));
   });
 });
 

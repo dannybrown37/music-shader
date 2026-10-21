@@ -1,3 +1,5 @@
+import { MAX_CAST } from "./cast.ts";
+import { choreoRate, dropSurge } from "./drops.ts";
 import { MEL_BANDS } from "./frame.ts";
 import { EVENT_KINDS, SCALAR_NAMES } from "./types.ts";
 import type { EventKind, EventTrack, ScalarName, TrackAnalysis } from "./types.ts";
@@ -31,6 +33,12 @@ export interface Features {
   chroma: Float32Array;
   /** timbreX/Y/Z averaged over the last TIMBRE_SLOW_SECONDS: follows the instrument, not each hit. */
   timbreSlow: Float32Array;
+  /** MAX_CAST weights: how much each of the song's recurring sounds is playing now (all 0 live or in silence). */
+  cast: Float32Array;
+  /** Cast member playing each note in recent.note, newest first; -1 when unknown. */
+  noteCast: Float32Array;
+  /** ∫ choreoRate dt: slows motion through build-ups and surges it after drops (added to energyTime by the reactor). */
+  choreoTime: number;
 }
 
 export const TIMBRE_SLOW_SECONDS = 1;
@@ -55,6 +63,9 @@ export function createFeatures(): Features {
     mel: new Float32Array(MEL_BANDS),
     chroma: new Float32Array(12),
     timbreSlow: new Float32Array(3),
+    cast: new Float32Array(MAX_CAST),
+    noteCast: new Float32Array(RECENT_COUNT).fill(-1),
+    choreoTime: 0,
   };
 }
 
@@ -86,11 +97,18 @@ export function dominantPitch(chroma: ArrayLike<number>, offset = 0): number {
   return best;
 }
 
-/** Fills out.notePitch to line up with out.recent.note; `pitches` holds one entry per note so far. */
-export function notePitchState(pitches: ArrayLike<number>, out: Features): void {
+/** Fills out.notePitch (and out.noteCast) to line up with out.recent.note; each list holds one entry per note so far. */
+export function notePitchState(pitches: ArrayLike<number>, out: Features, casts?: ArrayLike<number>): void {
   const last = out.count.note - 1;
-  for (let n = 0; n < RECENT_COUNT; n++) out.notePitch[n] = last - n >= 0 && last - n < pitches.length ? pitches[last - n] : -1;
+  for (let n = 0; n < RECENT_COUNT; n++) {
+    const i = last - n;
+    out.notePitch[n] = i >= 0 && i < pitches.length ? pitches[i] : -1;
+    out.noteCast[n] = casts && i >= 0 && i < casts.length ? casts[i] : -1;
+  }
 }
+
+/** A note's cast member is read this long after its onset, once its timbre has settled. */
+const NOTE_CAST_DELAY = 0.08;
 
 /** Read a note's pitch slightly after its onset, once the attack noise has passed. */
 export const NOTE_PITCH_DELAY = 0.03;
@@ -161,10 +179,17 @@ export class FeatureSampler {
   private readonly energyPrefix: Float64Array;
   private downbeatCache: { times: Float32Array; intensity: Float32Array } | null = null;
   private readonly notePitches: Float32Array;
+  private readonly noteCasts: Float32Array;
   private readonly timbrePrefix: Float64Array[];
+  private readonly choreoPrefix: Float64Array;
 
   constructor(analysis: TrackAnalysis) {
     this.analysis = analysis;
+    const { cast } = analysis;
+    this.noteCasts = Float32Array.from(analysis.events.note.times, (t) => {
+      const b = Math.floor((t + NOTE_CAST_DELAY) / cast.blockSeconds);
+      return b >= 0 && b < cast.ids.length ? cast.ids[b] : -1;
+    });
     this.timbrePrefix = TIMBRE_AXES.map((name) => {
       const prefix = new Float64Array(analysis.frames + 1);
       for (let i = 0; i < analysis.frames; i++) prefix[i + 1] = prefix[i] + analysis.scalars[name][i];
@@ -177,6 +202,16 @@ export class FeatureSampler {
       const trapezoid = (energyRate(loudness[i], percussive[i]) + energyRate(loudness[j], percussive[j])) / 2;
       this.energyPrefix[i + 1] = this.energyPrefix[i] + trapezoid / analysis.fps;
     }
+    const drops = analysis.events.drop;
+    const choreo = new Float32Array(analysis.frames);
+    for (let i = 0, d = -1; i < analysis.frames; i++) {
+      const t = i / analysis.fps;
+      while (d + 1 < drops.times.length && drops.times[d + 1] <= t) d++;
+      const surge = d >= 0 ? dropSurge(t - drops.times[d], drops.strengths[d]) : 0;
+      choreo[i] = choreoRate(analysis.scalars.build[i], energyRate(loudness[i], percussive[i]), surge);
+    }
+    this.choreoPrefix = new Float64Array(analysis.frames + 1);
+    for (let i = 0; i < analysis.frames; i++) this.choreoPrefix[i + 1] = this.choreoPrefix[i] + choreo[i] / analysis.fps;
     this.notePitches = Float32Array.from(analysis.events.note.times, (t) => {
       const frame = Math.min(analysis.frames - 1, Math.round((t + NOTE_PITCH_DELAY) * analysis.fps));
       return dominantPitch(analysis.chroma, frame * 12);
@@ -201,13 +236,32 @@ export class FeatureSampler {
     out.energyTime = this.energyPrefix[i] + ((rateHere + rateNow) / 2) * ((pos - i) / a.fps);
     const from = Math.max(0, i + 1 - Math.round(TIMBRE_SLOW_SECONDS * a.fps));
     this.timbrePrefix.forEach((prefix, d) => (out.timbreSlow[d] = (prefix[i + 1] - prefix[from]) / (i + 1 - from)));
+    out.choreoTime = this.choreoPrefix[i] + (this.choreoPrefix[i + 1] - this.choreoPrefix[i]) * (pos - i);
+    this.castState(t, out);
     for (const kind of EVENT_KINDS) eventState(a.events[kind], t, decays[kind], kind, out);
-    notePitchState(this.notePitches, out);
+    notePitchState(this.notePitches, out, this.noteCasts);
     beatState(a.events.beat.times, a.events.downbeat.times, a.tempo, t, out);
+  }
+
+  /** Cast weights interpolated between block centres. */
+  private castState(t: number, out: Features): void {
+    const { blockSeconds, maxMembers, weights } = this.analysis.cast;
+    const blocks = weights.length / maxMembers;
+    out.cast.fill(0);
+    if (blocks === 0) return;
+    const pos = Math.max(0, Math.min(blocks - 1, t / blockSeconds - 0.5));
+    const i = Math.floor(pos);
+    const j = Math.min(blocks - 1, i + 1);
+    const w = pos - i;
+    for (let c = 0; c < Math.min(maxMembers, out.cast.length); c++) out.cast[c] = weights[i * maxMembers + c] * (1 - w) + weights[j * maxMembers + c] * w;
   }
 
   sectionTimes(): Float32Array {
     return this.analysis.events.section.times;
+  }
+
+  dropTimes(): Float32Array {
+    return this.analysis.events.drop.times;
   }
 
   /** Downbeat times with the song intensity at each, for Auto VJ's beat-synced cuts. */

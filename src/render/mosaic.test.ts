@@ -63,6 +63,17 @@ describe("MosaicPlanner packing", () => {
     }
   });
 
+  it("packs each shape's cast member for the shader, -1 when unknown", () => {
+    const p = plan([
+      { kind: "note", time: 0, strength: 1, timbre: FLAT, cast: 2 },
+      { kind: "kick", time: 0.1, strength: 1, timbre: FLAT },
+    ]);
+    const out = new Float32Array(MAX_SHAPES * TEXELS_PER_SHAPE * 4);
+    expect(p.visible(0.5, out)).toBe(2);
+    const castOf = (n: number): number => out[n * TEXELS_PER_SHAPE * 4 + 15];
+    expect([castOf(0), castOf(1)]).toEqual([2, -1]);
+  });
+
   it("gives louder hits bigger shapes while there is room", () => {
     const p = plan([
       { kind: "note", time: 0, strength: 0.3, timbre: FLAT },

@@ -36,6 +36,20 @@ uniform vec2 uNoteHist[16];   // melodic onsets (not drums)
 uniform float uNotePitch[16]; // pitch class of each uNoteHist entry, 0 = C … 11 = B; -1 unknown
 uniform float uNoteCount;    // notes so far: uNoteCount - i identifies uNoteHist[i]
 
+// ---- Choreography: where the song is going (offline knows; live only gets uDrop) ----
+uniform float uBuild;       // 0 → 1 through a build-up into a drop, 0 from the drop on
+uniform float uDrop;        // decaying impulse on a drop (0..1.5)
+uniform float uDropAge;     // seconds since the last drop (60 before the first)
+uniform float uCamZoom;     // > 1 draws back through a build, < 1 punches in on the drop; applied in centeredUv()
+uniform float uCalm;        // 1 in loud passages, down to ~0.6 in quiet ones ("Quiet vs loud")
+
+// ---- Cast: the song's recurring sounds, each with one colour everywhere ----------
+uniform float uCastCount;    // members, 0 when unknown (live input)
+uniform vec3 uCastColor[6];  // linear RGB per member
+uniform float uCastNow[6];   // how much each member is sounding now
+uniform float uNoteCast[16]; // member playing each uNoteHist entry; -1 unknown
+uniform float uCastMix;      // 0..1 how much cast colours replace the scene's own
+
 // ---- Textures ----------------------------------------------------------------
 uniform sampler2D uSpectrum;     // 64×1 mel spectrum, low → high
 uniform sampler2D uSpectrogram;  // 64×128 history, row v=0 is now, v=1 is ~2s ago
@@ -113,5 +127,40 @@ float fbm(vec2 p, int octaves) {
   return v;
 }
 
-// Centered, aspect-correct coordinates: y in [-1, 1].
-vec2 centeredUv() { return (gl_FragCoord.xy - 0.5 * uResolution) / (0.5 * uResolution.y); }
+// Centered, aspect-correct coordinates: y in [-1, 1], times the choreography's camera zoom.
+vec2 centeredUv() { return (gl_FragCoord.xy - 0.5 * uResolution) / (0.5 * uResolution.y) * uCamZoom; }
+
+// A bright shell racing out from the centre on a drop; uv from centeredUv(). 0 otherwise.
+float dropRing(vec2 uv) {
+  if (uDrop <= 0.0 || uDropAge > 3.0) return 0.0;
+  float d = length(uv) - uDropAge * 1.5;
+  float shell = exp(-d * d * 90.0) + 0.35 * exp(d * 6.0) * step(d, 0.0);
+  return uDrop * shell * exp(-uDropAge * 1.3);
+}
+
+// The colour of whoever is playing now, blended into `fallback` by uCastMix.
+vec3 castNow(vec3 fallback) {
+  if (uCastCount < 0.5) return fallback;
+  vec3 c = vec3(0.0);
+  float w = 0.0;
+  for (int i = 0; i < 6; i++) {
+    c += uCastColor[i] * uCastNow[i];
+    w += uCastNow[i];
+  }
+  if (w < 1e-3) return fallback;
+  // Keep the fallback's brightness so cast colours tint rather than relight the scene.
+  vec3 tint = c / w;
+  float lum = dot(fallback, vec3(0.2126, 0.7152, 0.0722));
+  tint *= lum / max(dot(tint, vec3(0.2126, 0.7152, 0.0722)), 1e-3);
+  return mix(fallback, tint, uCastMix * min(1.0, w));
+}
+
+// The colour of the cast member that played recent note i, blended into `fallback`.
+vec3 noteColor(int i, vec3 fallback) {
+  float k = uNoteCast[i];
+  if (uCastCount < 0.5 || k < 0.0) return fallback;
+  vec3 tint = uCastColor[int(k)];
+  float lum = dot(fallback, vec3(0.2126, 0.7152, 0.0722));
+  tint *= lum / max(dot(tint, vec3(0.2126, 0.7152, 0.0722)), 1e-3);
+  return mix(fallback, tint, uCastMix);
+}

@@ -88,6 +88,26 @@ describe("buildSchedule with beat-synced cuts", () => {
     expect(sceneAt(40, events, show)).toMatchObject({ previous: -1, mix: 1 });
   });
 
+  describe("on drops", () => {
+    const quiet = { times: bars.times, intensity: bars.times.map(() => 0.3) };
+
+    it("hard-cuts on a drop even in a quiet part", () => {
+      expect(buildSchedule([], quiet, cuts, [60])).toEqual([{ time: 60, cut: true }]);
+    });
+
+    it("absorbs a section change detected just before the drop", () => {
+      expect(buildSchedule([58.5], quiet, cuts, [60])).toEqual([{ time: 60, cut: true }]);
+    });
+
+    it("switches on a drop even right after another change, then waits again", () => {
+      expect(buildSchedule([8, 25], noBars, cuts, [14]).map((e) => e.time)).toEqual([7.25, 14]);
+    });
+
+    it("crossfades onto the drop when cuts are off", () => {
+      expect(buildSchedule([], bars, fades, [60])).toEqual([{ time: 59.25, cut: false }]);
+    });
+  });
+
   it("doesn't rewrite the past when later sections arrive (live input grows the lists)", () => {
     const live = { ...cuts, lookahead: false };
     const early = buildSchedule(sections.subarray(0, 3), bars, live);

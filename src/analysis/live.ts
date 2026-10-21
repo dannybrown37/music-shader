@@ -1,6 +1,7 @@
 import { estimateTempo } from "./beats.ts";
 import { BANDS, bandIndices, compressValue, DETECTORS, EPS, hatGate, HAT, HPSS_FREQ, HPSS_TIME, isNearAny, KICK, NOTE_DRUM_GUARD, REF_FLOOR, rowFlux, SNARE_CRACK, SNARE_TONAL_DELAY, snareGate, toDb } from "./bands.ts";
 import type { DetectorName } from "./bands.ts";
+import { choreoRate, dropSurge, LiveDropDetector } from "./drops.ts";
 import { retain } from "./dsp.ts";
 import { FFT_SIZE, FrameAnalyzer, HOP, MEL_BANDS, melCenters } from "./frame.ts";
 import { LiveMelody, MELODY_GATE, MelodySalience, PITCH_MIN_SPAN } from "./pitch.ts";
@@ -139,8 +140,8 @@ export class LiveAnalyzer {
   private readonly bands: Record<"kick" | "crack" | "hat" | "all", number[]>;
   private readonly bandGroups: [ScalarName, number[]][];
   private readonly pickers: Record<DetectorName, LivePeakPicker>;
-  /** Sections and downbeats keep their whole history: Auto VJ counts them from the start. */
-  private readonly tracks = Object.fromEntries(EVENT_KINDS.map((k) => [k, new GrowingTrack(k === "section" || k === "downbeat" ? Infinity : MAX_EVENTS)])) as Record<EventKind, GrowingTrack>;
+  /** Sections, drops and downbeats keep their whole history: Auto VJ counts them from the start. */
+  private readonly tracks = Object.fromEntries(EVENT_KINDS.map((k) => [k, new GrowingTrack(k === "section" || k === "downbeat" || k === "drop" ? Infinity : MAX_EVENTS)])) as Record<EventKind, GrowingTrack>;
   private readonly downbeatIntensity: number[] = [];
   /** Pitch class of each note in tracks.note, kept the same length. */
   private readonly notePitches: number[] = [];
@@ -168,6 +169,8 @@ export class LiveAnalyzer {
   private lastSection = -Infinity;
   private noveltyArmed = true;
   private energyTime = 0;
+  private choreoTime = 0;
+  private readonly dropDetector = new LiveDropDetector();
   private intensityDb = Number.NaN;
   private readonly chroma = new Float32Array(12);
   private readonly timbreSlow = new Float32Array(3);
@@ -237,6 +240,10 @@ export class LiveAnalyzer {
 
   sectionTimes(): Float32Array {
     return this.tracks.section.track.times;
+  }
+
+  dropTimes(): readonly number[] {
+    return this.tracks.drop.times;
   }
 
   downbeats(): { times: Float32Array; intensity: Float32Array } {
@@ -510,6 +517,12 @@ export class LiveAnalyzer {
     }
 
     this.energyTime += energyRate(v.loudness, v.percussive) * dt;
+    const dropStrength = this.dropDetector.push(t, loudDb, dt);
+    if (dropStrength > 0) this.tracks.drop.add(t, dropStrength);
+    const drops = this.tracks.drop;
+    const n = drops.times.length;
+    const surge = n > 0 ? dropSurge(t - drops.times[n - 1], drops.strengths[n - 1]) : 0;
+    this.choreoTime += choreoRate(0, energyRate(v.loudness, v.percussive), surge) * dt;
     const row = (this.frames - 1) % this.specRows;
     for (let c = 0; c < MEL_BANDS; c++) {
       this.mel[c] = this.range(`mel${c}`, 1, 24).normalize(toDb(power[c]), dt);
@@ -526,6 +539,8 @@ export class LiveAnalyzer {
     out.chroma.set(this.chroma);
     out.timbreSlow.set(this.timbreSlow);
     out.energyTime = this.energyTime + Math.max(0, t - this.time) * energyRate(this.values.loudness, this.values.percussive);
+    out.choreoTime = this.choreoTime;
+    out.cast.fill(0);
     for (const kind of EVENT_KINDS) eventState(this.tracks[kind].track, t, decays[kind], kind, out);
     notePitchState(this.notePitches, out);
     out.tempo = this.tempo || 120;

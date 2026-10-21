@@ -1,4 +1,7 @@
 import { estimateTempo, pickDownbeat, trackBeats } from "./beats.ts";
+import { findCast, harmonicMfcc } from "./cast.ts";
+import { findDrops } from "./drops.ts";
+import { estimateKey } from "./key.ts";
 import { followEnvelope, medianFilter, movingMean, normalizeRange, peakPick, percentile, retain } from "./dsp.ts";
 import type { PeakPickOptions } from "./dsp.ts";
 import { BANDS, bandIndices, compressValue, DETECTORS, EPS, hatGate, HAT, HPSS_FREQ, HPSS_TIME, isNearAny, KICK, NOTE_DRUM_GUARD, REF_FLOOR, rowFlux, SNARE_CRACK, SNARE_TONAL_DELAY, snareGate, toDb } from "./bands.ts";
@@ -451,6 +454,17 @@ export function analyzeTrack(left: Float32Array, right: Float32Array | null, sam
     times: Float32Array.from(sectionPeaks, (p) => p / fps),
     strengths: Float32Array.from(sectionPeaks, (p) => novelty[p]),
   };
+  const { drops, build } = findDrops({ loudness: scalars.loudness, bass: scalars.bass, percussive: scalars.percussive, fps, downbeats: events.downbeat.times });
+  events.drop = drops;
+  scalars.build = build;
+  const cast = findCast({
+    features: harmonicMfcc(harmonic.data, frames),
+    dims: MFCC_COUNT - 1,
+    voiced,
+    fps,
+    describe: { brightness: scalars.brightness, noisiness: scalars.noisiness, tonalness: scalars.tonalness, voice: scalars.voice },
+  });
+  const key = estimateKey(chroma.data, scalars.tonalness);
 
   const mel = new Float32Array(frames * MEL_BANDS);
   for (let c = 0; c < MEL_BANDS; c++) {
@@ -470,5 +484,5 @@ export function analyzeTrack(left: Float32Array, right: Float32Array | null, sam
 
   const odfs = { kick: kickOdf, snare: snareOdf, hat: hatOdf, onset: onsetOdf, note: noteOdf };
   const debug = { hatFlux, pulse, melodyMidi: melody.midi, clarity };
-  return { sampleRate, fps, frames, duration: length / sampleRate, tempo, scalars, mel, chroma: chromaSmooth, events, odfs, debug };
+  return { sampleRate, fps, frames, duration: length / sampleRate, tempo, scalars, mel, chroma: chromaSmooth, events, cast, key, odfs, debug };
 }

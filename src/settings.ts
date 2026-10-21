@@ -24,6 +24,9 @@ export const REACTIVITY_RANGES = {
   harmony: { min: 0, max: 1, label: "Key → hue", help: "How much the musical key tints the palette" },
   melody: { min: 0, max: 3, label: "Melody / voice", help: "How bright the melody line and voice glow are" },
   motion: { min: 0, max: 3, label: "Motion speed", help: "Base speed of flow/camera, scaled by loudness" },
+  drop: { min: 0, max: 2, label: "Build-up & drop", help: "Before a drop the picture draws in, slows and drains of colour; on the drop it bursts" },
+  dynamics: { min: 0, max: 1, label: "Quiet vs loud", help: "Calms the visuals in quiet passages so the loud ones hit harder" },
+  cast: { min: 0, max: 1, label: "Instrument colours", help: "Notes and melody take the colour of the instrument playing them (the song's cast)" },
 } satisfies Record<string, Range>;
 
 export type ReactivityKey = keyof typeof REACTIVITY_RANGES;
@@ -37,6 +40,7 @@ export const DECAY_RANGES: Record<EventKind, Range> = {
   beat: { min: 0.02, max: 1, label: "Beat decay (s)" },
   downbeat: { min: 0.05, max: 2, label: "Downbeat decay (s)" },
   section: { min: 0.2, max: 6, label: "Section decay (s)" },
+  drop: { min: 0.3, max: 4, label: "Drop decay (s)" },
 };
 
 export const LOOK_RANGES = {
@@ -91,12 +95,20 @@ export interface Settings {
     artMode: ArtMode;
     artSize: number;
     showLyrics: boolean;
+    /** Seconds at the end of the song that recap it as the Portrait (0 = off). */
+    outro: number;
   };
 }
 
 export const ART_MODES = ["off", "badge", "backdrop"] as const;
 export type ArtMode = (typeof ART_MODES)[number];
 export const ART_SIZE: Range = { min: 0.3, max: 2, label: "Art size" };
+export const OUTRO_RANGE = {
+  min: 0,
+  max: 30,
+  label: "Portrait outro (s, 0 = off)",
+  help: "The song's last seconds crossfade into its Portrait, which redraws the whole song as a recap (exports too)",
+} satisfies Range;
 
 export function defaultSettings(): Settings {
   return {
@@ -109,8 +121,8 @@ export function defaultSettings(): Settings {
     autoCuts: true,
     autoCutIntensity: 0.75,
     autoCutBars: 4,
-    reactivity: { sensitivity: 1, kick: 1, snare: 1, hat: 1, onset: 0.6, bass: 1, timbre: 1, harmony: 0.35, melody: 1, motion: 1 },
-    decay: { kick: 0.18, snare: 0.22, hat: 0.07, onset: 0.12, note: 0.3, beat: 0.15, downbeat: 0.5, section: 2.5 },
+    reactivity: { sensitivity: 1, kick: 1, snare: 1, hat: 1, onset: 0.6, bass: 1, timbre: 1, harmony: 0.35, melody: 1, motion: 1, drop: 1, dynamics: 0.5, cast: 0.8 },
+    decay: { kick: 0.18, snare: 0.22, hat: 0.07, onset: 0.12, note: 0.3, beat: 0.15, downbeat: 0.5, section: 2.5, drop: 1.6 },
     look: {
       feedback: 0.0,
       feedbackZoom: 0.006,
@@ -128,7 +140,7 @@ export function defaultSettings(): Settings {
       renderScale: 1,
     },
     sceneParams: {},
-    overlay: { title: "", subtitle: "", showTitle: false, showHud: false, artMode: "off", artSize: 1, showLyrics: true },
+    overlay: { title: "", subtitle: "", showTitle: false, showHud: false, artMode: "off", artSize: 1, showLyrics: true, outro: 12 },
   };
 }
 
@@ -176,6 +188,7 @@ export function mergeSettings(base: Settings, patch: unknown): Settings {
     if (ART_MODES.includes(o.artMode as ArtMode)) out.overlay.artMode = o.artMode as ArtMode;
     if (typeof o.artSize === "number" && Number.isFinite(o.artSize)) out.overlay.artSize = Math.min(ART_SIZE.max, Math.max(ART_SIZE.min, o.artSize));
     if (typeof o.showLyrics === "boolean") out.overlay.showLyrics = o.showLyrics;
+    if (typeof o.outro === "number" && Number.isFinite(o.outro)) out.overlay.outro = Math.min(OUTRO_RANGE.max, Math.max(OUTRO_RANGE.min, o.outro));
   }
   return out;
 }

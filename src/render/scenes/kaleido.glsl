@@ -75,7 +75,7 @@ void main() {
   float seam = exp(-lineTrap * mix(70.0, 30.0, uHigh));
   col += mix(hue, ramp(0.9), 0.4) * seam * (0.2 + 0.6 * uMid + 1.2 * uHat) * p_glow * energy;
   float jewel = exp(-pointTrap * 9.0);
-  col += ramp(0.6 + 0.3 * jewel) * jewel * (0.3 + 1.2 * uBass + 0.8 * uNote) * energy;
+  col += castNow(ramp(0.6 + 0.3 * jewel)) * jewel * (0.3 + 1.2 * uBass + 0.8 * uNote) * energy;
   // Frequency rings: each ring is lit or dim by its band, so you can point at the bass.
   float ringPos = r0 / 1.35 * BAND_RINGS;
   float ringId = floor(ringPos);
@@ -89,6 +89,7 @@ void main() {
 
   col += mix(hue, ramp(0.95), 0.5) * shock * p_shock * (0.15 + 3.0 * seam + 2.0 * jewel);
   col += ramp(0.7) * exp(-r * 4.0) * (uKick * 1.2 + uBass * 0.2) * p_glow;
+  col += mix(hue, ramp(0.95), 0.5) * dropRing(uv) * (0.6 + 3.0 * seam + 2.0 * jewel);
   col *= 1.0 + 0.3 * uSection + 0.2 * uOnset;
   fragColor = vec4(col, 1.0);
 }

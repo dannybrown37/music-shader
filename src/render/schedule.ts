@@ -49,16 +49,25 @@ export interface ScheduledScene {
   mix: number;
 }
 
-export function buildSchedule(sections: ArrayLike<number>, bars: Downbeats, o: ScheduleOptions): ScheduleEvent[] {
+/** A section change this close to a drop is the same change (offline only). */
+const DROP_ABSORB_SECONDS = 4;
+
+/** `drops` always switch scene (a hard cut when cuts are on), whatever the minimum spacing. */
+export function buildSchedule(sections: ArrayLike<number>, bars: Downbeats, o: ScheduleOptions, drops: ArrayLike<number> = []): ScheduleEvent[] {
   const loud = (i: number): boolean => o.cuts && bars.intensity[i] >= o.cutIntensity;
   const events: (ScheduleEvent & { bar: number })[] = [];
+  const changes = [
+    ...Array.from(drops, (t) => ({ t, drop: true })),
+    // Live input already played the section by the time it hears the drop, so only offline can merge them.
+    ...Array.from(sections, (t) => ({ t, drop: false })).filter(({ t }) => !o.lookahead || Array.from(drops).every((d) => Math.abs(d - t) > DROP_ABSORB_SECONDS)),
+  ].sort((a, b) => a.t - b.t);
   let lastSection = -Infinity;
-  for (let k = 0; k < sections.length; k++) {
-    const s = sections[k];
-    if (s - lastSection < o.minSeconds) continue;
+  for (const { t: s, drop } of changes) {
+    if (!drop && s - lastSection < o.minSeconds) continue;
     lastSection = s;
     const bar = nearestBar(bars.times, s);
-    if (bar >= 0 && loud(bar)) events.push({ time: bars.times[bar], cut: true, bar });
+    if (drop) events.push(o.cuts ? { time: s, cut: true, bar } : { time: s - o.lead, cut: false, bar });
+    else if (bar >= 0 && loud(bar)) events.push({ time: bars.times[bar], cut: true, bar });
     else events.push({ time: s - o.lead, cut: false, bar });
   }
   if (!o.cuts) return events.map(({ time, cut }) => ({ time, cut }));

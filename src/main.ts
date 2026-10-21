@@ -295,7 +295,8 @@ function wireIdle(app: App): void {
 
 /**
  * ?still&track=NAME&t=SECONDS[&scene=ID&w=640&h=360&warm=1&fps=30]: renders one frame, then sets the title to "ready".
- * &art=URL and &lrc=URL load cover art and lyrics first; &thumbnail renders the YouTube thumbnail instead.
+ * &art=URL and &lrc=URL load cover art and lyrics first; &thumbnail renders the YouTube thumbnail instead,
+ * &poster the song's Portrait poster (at w × h).
  */
 async function runStill(app: App, params: URLSearchParams): Promise<void> {
   document.body.classList.add("still");
@@ -313,12 +314,17 @@ async function runStill(app: App, params: URLSearchParams): Promise<void> {
   if (art) await app.setArt(await (await fetch(art)).blob());
   const lrc = params.get("lrc");
   if (lrc) app.setLyrics(await (await fetch(lrc)).text());
+  const num = (k: string, d: number): number => (params.has(k) ? Number(params.get(k)) : d);
   if (params.has("thumbnail")) {
     await app.renderYouTubeThumbnail();
     document.title = "ready";
     return;
   }
-  const num = (k: string, d: number): number => (params.has(k) ? Number(params.get(k)) : d);
+  if (params.has("poster")) {
+    await app.renderPoster(num("w", 1080), num("h", 1080));
+    document.title = "ready";
+    return;
+  }
   const [t, w, h, fps] = [num("t", 30), num("w", 640), num("h", 360), num("fps", 30)];
   if (params.has("export")) {
     await runExportTest(app, t, num("export", 2), w, h, fps);

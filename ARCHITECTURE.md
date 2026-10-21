@@ -41,6 +41,9 @@ src/
     beats.ts           tempo (autocorrelation + prior) and Ellis DP beat tracking
     pitch.ts           melody line (harmonic summation + Viterbi), vibrato → voice; shared by offline + live
     dsp.ts             percentile, median, smoothing, peak picking
+    drops.ts           drops + build-ups (offline), LiveDropDetector (dB), the choreography clock
+    cast.ts            the song's recurring sounds: harmonic MFCC → k-means → members by entrance
+    key.ts             key from average chroma (Krumhansl–Kessler profiles), for the poster
     sampler.ts         TrackAnalysis + time → Features (envelopes, beat phase, history)
     live.ts            causal LiveAnalyzer with the same Features output
     types.ts           feature and event names
@@ -50,7 +53,10 @@ src/
     gl.ts              WebGL2 helpers (programs with auto-typed uniforms, targets)
     renderer.ts        the pass pipeline above
     reactivity.ts      Features + Settings → uniforms (the "mapping layer")
-    schedule.ts        Auto VJ: section/downbeat schedule → scene at t
+    schedule.ts        Auto VJ: section/downbeat/drop schedule → scene at t
+    cast-colors.ts     one fixed colour per cast member (darker sound → warmer)
+    portrait.ts        the whole song as a 720-column texture for the Portrait scene
+    outro.ts           timing of the Portrait outro at the end of a song
     show.ts            hand-placed cues per song → scene, palette, crossfade at t
     palettes.ts        4-stop gradients, section cycling
     shaders/           common.glsl (shared header), feedback, bloom, luminance, composite
@@ -120,6 +126,26 @@ vibrato ~85 ms late.
 Every continuous feature is normalised **per song** (percentiles), so a quiet
 acoustic track moves the visuals as much as a brickwalled EDM track.
 
+### Drops, build-ups, cast, key
+
+```
+energy = 0.45·loudness + 0.3·bass + 0.25·percussive   (drops.ts)
+for each downbeat d: lift = mean(energy, d … d+2 bars) − mean(energy, d−2 bars … d)
+   drop if lift ≥ max(0.12, 0.55 × the song's biggest lift) and energy after ≥ 0.5,
+   at least 8 bars apart ─► events.drop (strength = lift / 0.35)
+   build = x² from the latest trough 4–8 bars back to the drop ─► scalars.build
+
+harmonic mel ─► MFCC 1–12 ─► 0.25 s blocks ─► one global scale   (cast.ts)
+   ─► k-means K = 1…6 (largest K that cuts the spread to ≤ 75% of K−1) ─► merge < 4% clusters
+   ─► soft weights per block (±0.5 s smoothing) ─► members renumbered by entrance
+```
+
+`FeatureSampler` turns these into `Features.cast` (weights now), `noteCast` (who played each
+recent note) and `choreoTime`, a prefix-integrated clock that slows through builds and surges after
+drops (added to `uFlow`, so seeking and export stay exact). Live: `LiveDropDetector` watches raw dB
+(live features are normalised to recent history, so a long quiet part already reads as loud);
+there is no build and no cast.
+
 ### Why HPSS matters
 
 Without it a sustained bass line or pad "flickers" in the kick band and fires false
@@ -162,6 +188,12 @@ intensity ┘   (schedule.ts)                plus a cut every N bars on the phra
 ```
 
 Both are pure functions recomputed every frame, so seeking and exporting always agree.
+Drops always switch scene (a hard cut when cuts are on) and absorb a section change within 4 s
+(offline only). The Portrait is left out of the rotation (`vjScenes()`).
+
+**Portrait outro**: `outroAt(t, duration, seconds)` (`outro.ts`) crossfades the last seconds into
+the Portrait, sweeps its pen over the whole song, then fades in the poster text. It runs on song
+time, so exports get it too.
 
 A **show** (`show.ts`) replaces this when the song has cues and *Play this song's show* is on:
 `showAt(t, cues)` returns the scene, an optional palette override and the crossfade, the same way.
@@ -179,8 +211,12 @@ keeps its full section/downbeat history and aligns cuts to the previous section 
   scene's `exposureKey`. Clamped to 0.5–2× so it evens out loud vs quiet passages
   without flattening a scene's look.
 - **Composite**: chromatic aberration (kicks/snares widen it), flash, ACES tonemap,
-  vignette, grain, cover art (badge or backdrop), lyric line, title card, dither. Art and text
-  are textures composited here, so exports include them.
+  vignette, grain, cover art (badge or backdrop), Portrait poster text, lyric line, title card,
+  dither. Art and text are textures composited here, so exports include them.
+- **Choreography** (`renderer.ts`): through a build the trails lengthen and swirl inward and the
+  frame desaturates, darkens and vignettes; the drop adds a short white flash, bloom and chromatic
+  spikes and blows the trails outward. *Quiet vs loud* lowers exposure in quiet passages. These sit
+  after auto-exposure on purpose, so it can't undo them.
 - All trail parameters are scaled by `dt`, so 30, 60 and 144 fps look the same.
 
 ## Live mode differences
@@ -196,3 +232,5 @@ keeps its full section/downbeat history and aligns cuts to the previous section 
 | global DP beat tracking | tempo re-estimated every second; a phase-locked loop nudges the beat grid toward onsets |
 | PCA timbre | running z-scores of MFCC 1–3 |
 | novelty compares before/after | short vs long running averages |
+| drops from energy after vs before each downbeat, with build-ups | a dB jump over the last ~8 s, ~0.3 s late, no build-up |
+| cast (recurring sounds) and key | none: cast colours fall back to the scene's own |

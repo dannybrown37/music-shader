@@ -6,6 +6,11 @@ separately, follows **timbre** (which instrument or synth patch is sounding), th
 **beat and bar**, and **section changes**, and drives GLSL scenes with all of it. Built for making videos you'd upload: every scene is tuned for
 dark, contrasty, bloom-lit frames, and export renders frame-exact MP4s.
 
+Because it analyses the whole song first, it also knows **where the song is going**: the picture
+holds back through each build-up and bursts on the drop. It finds the song's **recurring sounds**
+and gives each one colour, the same in every scene. And it draws the whole song as one
+**portrait** you can export as a poster.
+
 ![scenes](docs/scenes.png)
 
 ## Quick start
@@ -61,8 +66,41 @@ MUSIC_DIR=~/Music just dev    # use a different folder
 | 9 | **Mosaic** | each kick / snare / note drops a shape wherever it still fits, until the screen is full (then each hit re-flashes the shape most like it); on the next downbeat they all fall away and it starts over (a section change clears it early) · shape = timbre: bright → more corners, noisy → spiky star, pitched → round · colour = instrument (timbre) · kicks solid, snares hollow, notes inset · each shape keeps breathing with its own sound (notes with their pitch) · hats → glints round every edge |
 | 0 | **Tessellate** | one tile shape covers the screen and keeps changing · timbre (averaged over the last second) picks the shape: bright → diamonds become Cairo pentagons and long hexagons, noisy → edges bend into interlocking Escher curves, the third axis leans the grid from square toward hexagonal · each snare turns the tiling a notch, kicks pump it · each tile fills with nested outlines as its band gets louder (bass at the centre), crawling inward on the beat · kick → waves of lit tiles · notes → the tiles of their pitch light up · hats → corner glints · each section → new lattice |
 
+| – | **Portrait** | the whole song as one ring, drawn by a pen as it plays: time runs clockwise from twelve, bass inside, the outline breathes with intensity · colour = the sound playing · kicks and snares ring the inside · melody orbits outside · build-ups glow toward each drop, drops fire rays (pick it in the *Scene* list; Auto VJ skips it) |
+
 Every scene also gets trails, bloom, chromatic aberration, auto-exposure, grain and
 vignette from the shared post-processing (*Look* folder).
+
+### Build-ups, drops and the song's sounds
+
+```
+energy  ▁▁▂▂▃▃▄▅▆▇█ │ ████████
+build   0 ────────► 1│ 0          the picture draws back, slows, darkens, drains of colour,
+                     │            trails swirl inward
+drop                 ▲            flash, punch-in, bloom, a shell racing out; Auto VJ hard-cuts here
+```
+
+- **Drops** are downbeats where the energy of the next 2 bars jumps over the last 2. The
+  **build-up** runs from the breakdown's trough (4–8 bars) into the drop. Songs that never let
+  up have none, which is the point. Live input can't see a drop coming: it only gets the burst,
+  about 0.3 s in.
+- **Quiet vs loud**: quiet passages react less and sit darker, so the loud parts hit harder.
+- **The song's sounds (its cast)**: the pitched part of the mix (drums removed) is grouped
+  into 1–6 recurring timbres, numbered in order of entrance. Each keeps one colour everywhere:
+  - notes in Nebula, Particles, Tessellate, Mosaic, Kaleido, Ensemble
+  - the melody line in Tunnel and Gauntlet
+  - the *sounds* lamps in the debug meters and the strip under the timeline
+  - the poster
+
+  Darker sounds get warmer colours. A "sound" is a timbre state, not an instrument name:
+  two instruments that always play together count as one.
+
+<img src="docs/poster.jpg" alt="Portrait poster of Haus of You: three sounds in red, blue and lime, two drop rays" width="420">
+
+**Song poster**: *Export video → Song poster (PNG)* renders the Portrait at 2160×2160 with the
+title, tempo, key, the cast and a key to reading it. With *Portrait outro* on (12 s by default),
+the end of every song and export crossfades into the Portrait, which redraws the whole song as a
+recap.
 
 **Auto VJ** (checkbox under *Scene*): moves to the next scene at detected section
 changes, at most every *N* seconds. The crossfade starts just before the change so the

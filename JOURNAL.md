@@ -280,3 +280,108 @@ moment between 15% and 85% of the song. Stills: `out/review/art-sheet.png`, `out
 - Real vocals (no vocal recordings here). Drag-drop of images/.lrc and the clipboard share link in
   Windows Chrome (headless covered loading via URL params, not the drop events).
 - CI and Pages have never run on GitHub (no remote yet).
+
+## 2026-10-20: session 5 (choreography, cast, portrait)
+
+**Goal (from you):** make it "next level, not AI slop": visuals that *know where the song is
+going* (build-ups and drops), the *same instrument looks the same* everywhere, and a *poster*
+of each song. Done autonomously.
+
+### Plan
+
+```
+                    offline analysis (worker, track.ts)
+  loudness ─┐
+  bass ─────┼─► drops.ts: lift = energy after − before each downbeat ─► events.drop (time, strength)
+  perc ─────┘            trough before the drop ─► build start      ─► scalars.build (0→1 ramp)
+  harmonic mel ─► cast.ts: harmonic MFCC per 0.25 s block ─► k-means (K by elbow) ─► cast
+                    members (ordered by entrance), per-block weights, descriptors, labels
+  chroma ─► key.ts: Krumhansl profiles ─► "A minor"
+
+                    render side
+  build, drop ─► Reactor ─► uBuild, uDrop, uDropAge, uCamZoom (all scenes, via centeredUv)
+                         ─► uFlow slows in the build, lunges after the drop (prefix-integrated)
+               Renderer  ─► trails suck inward + desaturate in the build; flash/bloom/CA on the drop
+  intensity ──► "Quiet vs loud": calm passages calm the visuals (restraint → contrast)
+  cast ───────► uCastColor[6], uCastNow[6], uNoteCast[16]: note/melody colour = who played it
+  whole song ─► uSong texture ─► Portrait scene: the song drawn as a ring, revealed as it plays;
+                                 poster PNG export; optional outro that recaps the song
+```
+
+Steps, each test-first where it's logic: (1) drops + build; (2) cast; (3) key; (4) uniforms,
+post-processing, Auto VJ cuts on drops; (5) per-scene touches; (6) Portrait scene + poster +
+outro; (7) HUD / timeline / analyze tool; (8) validate on real songs, docs.
+
+### 1. Drops and build-ups (`drops.ts`)
+
+- First threshold (lift ≥ 0.18) only caught 1 drop in the whole library. This music is mostly
+  loop-based game tracks: real entries lift energy by 0.13–0.29 (`out/dropscan.ts` prints a
+  per-bar energy sparkline with the top lifts). Now: lift ≥ max(0.12, 0.55 × the song's biggest).
+  Result: Haus of You 0:28 + 2:08, Fatal Glimpse 0:27 (exactly where the kicks enter, checked on
+  the strip chart), Octanique 0:53, Stamina 1:00 + 1:25, Icy Flight ×3, Blue Mars ×3 (swells),
+  Brahms ×4 (forte entries; mild strengths). None in Final Battle, Distorted Nexus, Corners,
+  Forest, Neon Street, which never let up. That's correct, but those songs get no choreography.
+- The build starts at the *latest* point still at the breakdown's trough (else a long flat
+  breakdown starts the ramp 8 bars early), clamped to 4–8 bars, shaped x².
+- Live: the first version used normalised levels and fired 0.6 s into a test; then never fired
+  after a long quiet pad, because live ranges adapt and the pad already read as 1.0. Now it
+  watches raw dB (6 dB over an 8 s average, within 6 dB of the loudest so far, 8 s warm-up).
+- Motion: `choreoTime` is prefix-integrated like `energyTime` (−0.7 × build × energy rate,
+  +1.2 × a 1 s surge after the drop), so seeks and exports stay exact. The reactor adds it to
+  `uFlow`, capped so motion never runs backwards.
+
+### 2. The cast (`cast.ts`, `cast-colors.ts`)
+
+- Harmonic-part MFCCs (HPSS already removes the drums) pooled in 0.25 s blocks, k-means with a
+  deterministic farthest-point start. Two bugs the synthetic tests caught: a greedy elbow stops
+  at K=2 when the 2-way split is weak but the 3-way one is clean (now: the largest K that still
+  cuts the spread to ≤ 75%), and per-dimension z-scores blew noise-only coefficients up to the
+  same weight as real timbre (now one global scale).
+- Real songs: 1–3 members (Brahms: 1, the cello and piano always play together). Labels started
+  as "low texture / high texture / mid texture" for everything; now honest: register by
+  brightness ("low", "mid", "high", or "main" alone), plus "voice"/"tones"/"noise" only when clear.
+- Colours are fixed, not from the palette (palettes change per section; a sound shouldn't), warm
+  → cool by brightness, spread for contrast. Shaders blend them in at the original luminance
+  (`castNow`, `noteColor`), so they tint rather than relight a scene.
+
+### 3. Key (`key.ts`)
+
+Krumhansl–Kessler profiles on tonalness-weighted mean chroma. Brahms reads B minor (it's in E
+minor; the exposition sits in B minor a lot, a classic dominant confusion). The poster omits the
+key below 0.6 correlation.
+
+### 4–5. Rendering
+
+- `centeredUv()` multiplies by `uCamZoom`, so every scene draws back through a build and punches
+  in on the drop without per-scene code. In raymarched scenes it acts as a field-of-view change.
+- Post (after auto-exposure, so it can't undo it): longer inward-swirling trails, desaturation,
+  darkening, vignette through the build; 0.12 s white flash, bloom/CA spikes, outward trail burst
+  on the drop. `dropRing()` in Nebula, Kaleido, Ensemble, Particles, Tessellate.
+- Auto VJ: every drop is a hard cut; a section within 4 s of a drop is merged into it (offline).
+- Mosaic carries the cast id in its spare texel slot. `cast` is a reserved word in GLSL (the smoke
+  test caught it).
+- Stills: `out/s5/haus-nebula-sheet.png` (build → drop), `out/s5/fg-sheet.png` (6 scenes × before /
+  end of build / drop).
+
+### 6. Portrait, poster, outro
+
+- `portrait.ts` packs the song into 720 columns × 69 rows (mel mean/max, levels, hit densities,
+  cast, drops, sections). The shader is polar: time clockwise from twelve, bands outward, outline =
+  intensity, colour = cast, kick/snare rings inside, hat dust, melody orbit, build glow, drop rays,
+  section ticks, a ghost of what's not drawn yet and a pen at the playhead.
+- The melody first drew as radial spikes (fast pitch leaps); held notes now draw bright and leaps
+  faintly, like Gauntlet's sky line. The first poster also took a random palette from section
+  cycling; the poster now turns cycling off.
+- Poster text explains how to read the ring ("time runs clockwise from twelve…"), lists the cast with
+  entrance times and the drop times.
+- Outro: last 12 s crossfade to the Portrait, the pen sweeps the whole song in ~8 s, text fades in.
+- Stills: `out/s5/poster-haus.png` (square), `out/s5/poster-bluemars.png` (16:9),
+  `out/s5/portrait-live.png`, `out/s5/outro-sheet.png`.
+
+### Not checked
+
+- Anything real-time on a GPU: frame rate of the Portrait (a 7-tap loop + ~10 texel fetches per
+  pixel, cheap) and how the build → drop *feels* in motion. Headless only gives stills.
+- Whether the cast clusters match what you'd call the instruments when listening. I can't listen;
+  the clusters are consistent (same sound returns with the same id in tests) but unverified by ear.
+- A real drop in live mode (tested with synthetic pad → drums only).

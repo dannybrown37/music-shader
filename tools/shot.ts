@@ -8,7 +8,7 @@
  * --sheet N renders N consecutive frames from --t into one 4-column contact sheet.
  * --export S encodes S seconds from --t to an .mp4 (WebCodecs) instead of taking a screenshot.
  * --art /out/cover.png and --lrc /out/song.lrc load cover art and lyrics (URLs on the dev server);
- * --thumbnail renders the YouTube thumbnail (use --w 1280 --h 720).
+ * --thumbnail renders the YouTube thumbnail (use --w 1280 --h 720); --poster the song's Portrait poster.
  * --ui --live song.wav runs the live-input path with the WAV as a fake microphone (add --hud for meters).
  * --ui --keys TD presses each character as a key (1.5 s apart) before the screenshot;
  *   named keys go in braces: --keys "{Space}4K{ArrowRight}2K".
@@ -32,6 +32,7 @@ async function main(): Promise<void> {
       art: { type: "string" },
       lrc: { type: "string" },
       thumbnail: { type: "boolean", default: false },
+      poster: { type: "boolean", default: false },
       ui: { type: "boolean", default: false },
       sheet: { type: "string", default: "0" },
       set: { type: "string" },
@@ -75,6 +76,7 @@ async function main(): Promise<void> {
       if (values.art) q.set("art", values.art);
       if (values.lrc) q.set("lrc", values.lrc);
       if (values.thumbnail) q.set("thumbnail", "1");
+      if (values.poster) q.set("poster", "1");
       if (values.export) q.set("export", values.export);
       const sheet = Number(values.sheet);
       if (sheet > 0) {

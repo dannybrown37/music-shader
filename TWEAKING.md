@@ -38,6 +38,18 @@ Ordered from "no code" to "write a shader".
   the .lrc) shows timed lines; lyrics are saved per song, art only until you reload.
 - **Export video → YouTube thumbnail (PNG)**: 1280×720 at the song's most intense moment,
   with the title card.
+- **Reactivity → Build-up & drop** (0–2): before each detected drop the picture draws back,
+  slows, darkens and drains of colour while trails swirl inward; on the drop it flashes, punches
+  in and bursts. 0 turns it off. **Quiet vs loud** (0–1): quiet passages react less and sit
+  darker, so the loud ones hit harder. **Instrument colours** (0–1): notes and the melody line
+  take the colour of the sound playing them (the song's *cast*; see the *sounds* lamps in <kbd>D</kbd>
+  and the coloured strip under the timeline).
+- **Envelope decay → Drop decay**: how long the drop's burst lasts.
+- **Scene → Portrait**: the whole song as one ring, drawn by a pen as it plays. Not in Auto VJ's
+  rotation and not on a number key; pick it in the *Scene* list.
+- **Export video → Song poster (PNG)**: the Portrait at 2160×2160, fully drawn, with title, tempo,
+  key, the cast and a key to reading it. **Portrait outro (s)**: the last seconds of the song
+  (exports too) crossfade into the Portrait, which redraws the whole song as a recap. 0 = off.
 - Press <kbd>D</kbd> for the debug meters while tweaking: they show exactly which
   events and features are firing.
 
@@ -57,6 +69,27 @@ const amp = 0.025 * s.look.shake * (u.uSnare as number);
 
 `src/render/renderer.ts` has the post-processing couplings (e.g. kicks widen bloom,
 snares widen chromatic aberration).
+
+The choreography lives in three places:
+
+```
+src/analysis/drops.ts   where drops are (DROP_LIFT_MIN, DROP_AFTER_MIN) and how long builds are
+                        (BUILD_MIN_BARS / BUILD_MAX_BARS); choreoRate = how much motion slows / surges
+src/render/reactivity.ts uCamZoom (draw back 0.22·build², punch-in spring), QUIET_DAMPING
+src/render/renderer.ts  trails, desaturation, darkening, flash, bloom and CA on build/drop
+```
+
+In a scene, `uBuild` (0→1), `uDrop` (impulse), `uDropAge` and `dropRing(uv)` are free to use:
+
+```glsl
+col *= 1.0 - 0.5 * uBuild;                    // hold back through the build
+col += ramp(0.95) * dropRing(uv) * 2.0;       // a shell racing out on the drop
+col += noteColor(i, mix(ramp(0.9), ...));     // recent note i in its player's colour
+vec3 lead = castNow(ramp(0.8));               // whoever is playing now
+```
+
+`src/analysis/cast.ts` decides how many sounds a song has (`CLUSTER_GAIN`: lower = fewer) and
+`src/render/cast-colors.ts` which colours they get (`CAST_HEX`, darker sounds warmer).
 
 To add a new slider: add a range in `src/settings.ts` (`REACTIVITY_RANGES` or
 `LOOK_RANGES`) and a default in `defaultSettings()`. The panel builds itself from those.
@@ -125,6 +158,10 @@ Uniform cheat-sheet (all in `common.glsl`):
 | `uMelody uPitch uVoice` | how clear the lead line is; its pitch 0..1 across the song's range (holds when silent); how voice-like it wavers |
 | `melodyLine(age)` | `vec2(pitch, melody)` of the lead line `age` (0..1 = now..2 s) ago. See `tunnel.glsl`, `gauntlet.glsl` |
 | `palette(t)` / `ramp(t)` | cyclic palette / dark→highlight ramp of the current palette |
+| `uBuild uDrop uDropAge` / `dropRing(uv)` | 0→1 through a build-up (files only); drop impulse; seconds since it; a shell racing out on the drop |
+| `uCamZoom` | already applied by `centeredUv()`: > 1 draws back in a build, < 1 punches in on the drop |
+| `uCalm` | 1 in loud passages, ~0.6 in quiet ones ("Quiet vs loud") |
+| `uCastColor[6] uCastNow[6] uCastCount uNoteCast[16]` / `castNow(c)` `noteColor(i, c)` | the song's sounds: their colours, who's playing now, who played each recent note; helpers blend into `c` by *Instrument colours* |
 
 **Hot reload:** with `just dev` running and a song playing, save any
 `src/render/scenes/*.glsl` and the scene recompiles in place: no page reload, no

@@ -21,9 +21,12 @@ uniform float uArtAspect;       // image width / height
 uniform float uArtPulse;        // kick envelope: the badge and backdrop breathe with it
 uniform sampler2D uLyrics;      // current lyric line, drawn like the title card
 uniform float uLyricsAlpha;
+uniform sampler2D uPoster;      // the Portrait's title, cast and key
+uniform float uPosterAlpha;
 uniform sampler2D uAdapted;     // 1×1: log of the eye-adapted average luminance
 uniform float uAutoExposure;    // 0 = fixed exposure, 1 = fully normalise to uKey
 uniform float uKey;
+uniform float uDesaturate;      // build-ups drain the colour before the drop
 
 in vec2 vUv;
 out vec4 fragColor;
@@ -45,6 +48,7 @@ void main() {
   col += uFlash * (col * 0.6 + vec3(0.04));
   float avg = exp(texture(uAdapted, vec2(0.5)).r);
   float auto = clamp(uKey / max(avg, 1e-4), 0.5, 2.0);
+  col = mix(col, vec3(dot(col, vec3(0.2126, 0.7152, 0.0722))), uDesaturate);
   col = aces(col * uExposure * mix(1.0, auto, uAutoExposure));
 
   float aspect = uResolution.x / uResolution.y;
@@ -78,6 +82,8 @@ void main() {
     col += vec3(1.0) * exp(-abs(r - radius) * 220.0) * (0.25 + 0.6 * uArtPulse);
   }
 
+  vec4 poster = texture(uPoster, vec2(vUv.x, 1.0 - vUv.y));
+  col = mix(col, poster.rgb, poster.a * uPosterAlpha);
   vec4 lyric = texture(uLyrics, vec2(vUv.x, 1.0 - vUv.y));
   col = mix(col, lyric.rgb, lyric.a * uLyricsAlpha);
   vec4 overlay = texture(uOverlay, vec2(vUv.x, 1.0 - vUv.y));

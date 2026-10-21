@@ -96,20 +96,25 @@ void main() {
     float x = rt - k.x * 1.3;
     waves += exp(-x * x / 0.02) * k.y * exp(-k.x * 1.8);
   }
+  vec3 tint = palette(h * 0.22 + band * 0.35 + t * 0.03);
   float pitch = floor(h * 12.0);
   float notes = 0.0;
+  vec3 noteTint = vec3(0.0);
   for (int i = 0; i < 8; i++) {
     vec2 n = uNoteHist[i];
     if (n.x < 0.0 || n.x > NOTE_LIFE || abs(uNotePitch[i] - pitch) > 0.5) continue;
-    notes += n.y * exp(-n.x * 3.5);
+    float w = n.y * exp(-n.x * 3.5);
+    notes += w;
+    noteTint += noteColor(i, tint) * w;
   }
-  float lit = waves * p_waves + notes * p_notes;
+  // A tile lit by a note takes the colour of the sound that played it.
+  if (notes > 1e-4) tint = mix(tint, noteTint / notes, min(1.0, notes * 3.0));
+  float lit = waves * p_waves + notes * p_notes + 1.5 * dropRing(centre);
 
   float fw = fwidth(edge) + 1e-4;
   float gap = 0.025 + 0.03 * uKick;
   float inside = edge - gap;
   float face = smoothstep(0.0, fw, inside);
-  vec3 tint = palette(h * 0.22 + band * 0.35 + t * 0.03);
   float energy = 0.25 + 0.75 * uLoud;
 
   float spec2 = spec * spec;

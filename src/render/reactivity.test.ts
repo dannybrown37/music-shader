@@ -103,6 +103,7 @@ describe("sectionParams", () => {
 describe("Reactor", () => {
   it("scales event envelopes by per-drum gain and master sensitivity, capped at 2", () => {
     const f = createFeatures();
+    f.scalars.intensity = 1;
     f.env.kick = 0.5;
     f.env.snare = 1.5;
     const s = defaultSettings();
@@ -130,6 +131,7 @@ describe("Reactor", () => {
     [1, 3, 1.5, 0.9],
   ])("scales melody and voice by sensitivity %f and melody gain %f", (sensitivity, gain, melody, voice) => {
     const f = createFeatures();
+    f.scalars.intensity = 1;
     f.scalars.melody = 0.6;
     f.scalars.voice = 0.3;
     f.scalars.pitch = 0.25;
@@ -171,5 +173,91 @@ describe("Reactor", () => {
     expect((u.uTimbreSlow as Float32Array)[0]).toBe(0);
     expect(u.uMelody).toBe(0);
     expect(u.uVoice).toBe(0);
+  });
+});
+
+describe("Reactor choreography", () => {
+  const settings = (patch: Partial<ReturnType<typeof defaultSettings>["reactivity"]> = {}): ReturnType<typeof defaultSettings> => {
+    const s = defaultSettings();
+    s.reactivity = { ...s.reactivity, ...patch };
+    return s;
+  };
+  const hit = (intensity: number): ReturnType<typeof createFeatures> => {
+    const f = createFeatures();
+    f.env.kick = 1;
+    f.scalars.intensity = intensity;
+    return f;
+  };
+  const afterDrop = (age: number): ReturnType<typeof createFeatures> => {
+    const f = createFeatures();
+    f.env.drop = Math.exp(-age);
+    f.since.drop = age;
+    f.recent.drop[0] = age;
+    f.recent.drop[1] = 1;
+    return f;
+  };
+
+  it.each([
+    [0, 1],
+    [1, 0.6],
+  ])("with Quiet vs loud at %f, a kick in a quiet passage hits at %f of its loud strength", (dynamics, ratio) => {
+    const r = new Reactor();
+    const quiet = r.build(hit(0), settings({ dynamics }), {}).uKick as number;
+    const loud = r.build(hit(1), settings({ dynamics }), {}).uKick as number;
+    expect(quiet / loud).toBeCloseTo(ratio, 1);
+  });
+
+  it("draws the camera back through a build and punches in on the drop", () => {
+    const r = new Reactor();
+    const build = createFeatures();
+    build.scalars.build = 0.9;
+    expect(r.build(build, settings(), {}).uCamZoom as number).toBeGreaterThan(1.1);
+    expect(r.build(afterDrop(0), settings(), {}).uCamZoom as number).toBeLessThan(0.9);
+    expect(r.build(afterDrop(4), settings(), {}).uCamZoom as number).toBeCloseTo(1, 2);
+  });
+
+  it("does nothing with Build-up & drop at 0", () => {
+    const r = new Reactor();
+    const f = afterDrop(0);
+    f.scalars.build = 0.9;
+    f.choreoTime = -3;
+    const u = r.build(f, settings({ drop: 0 }), {});
+    expect([u.uCamZoom, u.uBuild, u.uDrop]).toEqual([1, 0, 0]);
+    expect(u.uFlow).toBe(r.build({ ...f, choreoTime: 0 }, settings({ drop: 0 }), {}).uFlow);
+  });
+
+  it("adds the choreography clock to the flow", () => {
+    const r = new Reactor();
+    const f = createFeatures();
+    f.time = 10;
+    const base = r.build(f, settings(), {}).uFlow as number;
+    f.choreoTime = 2;
+    expect(r.build(f, settings(), {}).uFlow as number).toBeGreaterThan(base);
+  });
+});
+
+describe("Reactor cast", () => {
+  it("passes the cast's colours and who is playing now", () => {
+    const r = new Reactor();
+    r.setCast([
+      [1, 0, 0],
+      [0, 0, 1],
+    ]);
+    const f = createFeatures();
+    f.cast[1] = 1;
+    f.noteCast[0] = 1;
+    const u = r.build(f, defaultSettings(), {});
+    expect(u.uCastCount).toBe(2);
+    expect(Array.from(u.uCastColor as Float32Array).slice(0, 6)).toEqual([1, 0, 0, 0, 0, 1]);
+    expect(Array.from(u.uCastNow as Float32Array).slice(0, 2)).toEqual([0, 1]);
+    expect((u.uNoteCast as Float32Array)[0]).toBe(1);
+    expect(u.uCastMix).toBe(defaultSettings().reactivity.cast);
+  });
+
+  it("turns cast colouring off without a cast", () => {
+    const r = new Reactor();
+    r.setCast([]);
+    const u = r.build(createFeatures(), defaultSettings(), {});
+    expect([u.uCastCount, u.uCastMix]).toEqual([0, 0]);
   });
 });

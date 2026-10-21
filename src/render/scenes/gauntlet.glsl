@@ -467,7 +467,7 @@ void main() {
     float d = abs(uv.y - y) / steep;
     float w = 0.006 + 0.01 * uVoice;
     float line = smoothstep(w, w * 0.3, d) + exp(-d / (w * 4.0)) * 0.3;
-    vec3 tint = mix(palette(0.6), vec3(1.0, 0.85, 0.7), 0.4 * uVoice);
+    vec3 tint = castNow(mix(palette(0.6), vec3(1.0, 0.85, 0.7), 0.4 * uVoice));
     // Held notes draw bright; the jumps between them only faintly, so the tune reads as steps.
     float held = mix(0.15, 1.0, 1.0 / steep);
     glow += tint * line * held * smoothstep(0.15, 0.5, ml.y) * smoothstep(1.0, 0.6, age) * p_melody * 1.2;

@@ -31,7 +31,19 @@ Legend: **[you]** needs you (a real GPU, Windows, or a decision) · **[auto]** I
 - [x] Tessellate scene (key 0): tile shape from slow timbre, turned by snares; new `uTimbreSlow`
 - [x] `docs/scenes.png` regenerated with all 10 scenes (`just scenes-png`)
 
+## Done 2026-10-20, session 5 (details in JOURNAL.md)
+
+- [x] Drops + build-ups (offline), live drop burst, choreography in every scene + post, Auto VJ cuts on drops
+- [x] Quiet vs loud (restraint in quiet passages)
+- [x] The song's cast: recurring sounds with one colour each, in scenes, HUD, timeline, poster
+- [x] Key estimate; Portrait scene; Song poster PNG; Portrait outro
+
 ## Still open
+
+- [ ] **[you]** Watch a build → drop in Windows Chrome (Haus of You 1:55–2:10, Fatal Glimpse 0:18–0:30): too much? too little? (*Reactivity → Build-up & drop*)
+- [ ] **[you]** Listen with the debug meters (D): do the *sounds* lamps change when you'd say the instrument changes?
+- [ ] **[you]** Export a poster and a video with the outro; Portrait frame rate on the real GPU
+- [ ] **[auto]** Drop detection misses songs that never let up (by design); a "riser" detector (rising noise sweep, snare-roll density) could add builds without a big energy lift
 
 - [ ] **[you]** Tessellate (0) in Windows Chrome: frame rate, and whether the shape steps per snare feel right
 - [ ] **[you]** Push to GitHub, enable Pages (Settings → Pages → Source: GitHub Actions), watch CI go green

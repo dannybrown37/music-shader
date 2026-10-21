@@ -7,8 +7,8 @@ const HEIGHT = 46;
 const HANDLE_PX = 7;
 
 /**
- * The show timeline above the transport bar: the song's sections (pink ticks) and bars,
- * one block per cue coloured by scene, and the playhead.
+ * The show timeline above the transport bar: the song's sections (pink ticks), drops (gold) and bars,
+ * one block per cue coloured by scene, a strip of which sound (cast member) is playing, and the playhead.
  *
  *   ┊   ┊   ┊   ┊   ┊   ┊   ┊   ┊   ┊   ┊   ┊   ┊   ┊   ┊      bars
  *   │▓▓ preset ▓▓│◢ Tunnel ████████│ Orb · Ice ████│ Terrain …   cues (◢ = crossfade, │ = cut)
@@ -131,6 +131,16 @@ export class Timeline {
     for (const t of a.events.downbeat.times) c.fillRect(this.xOf(t, width), 4, 1, 6);
     c.fillStyle = "#ff4fd8";
     for (const t of a.events.section.times) c.fillRect(this.xOf(t, width) - 1, 2, 2, 10);
+    c.fillStyle = "#ffb000";
+    for (const t of a.events.drop.times) c.fillRect(this.xOf(t, width) - 2, 0, 4, 12);
+    // Which of the song's sounds is playing, in its colour.
+    const colors = this.app.castColors;
+    const { ids, blockSeconds } = a.cast;
+    for (let b = 0; b < ids.length; b++) {
+      if (ids[b] < 0) continue;
+      c.fillStyle = colors[ids[b]];
+      c.fillRect(this.xOf(b * blockSeconds, width), HEIGHT - 5, Math.max(1, this.xOf(blockSeconds, width)) + 0.5, 3);
+    }
 
     const cues = this.drag ? moveCue(this.app.show, this.drag.from, this.drag.to) : this.app.show;
     const top = 14;

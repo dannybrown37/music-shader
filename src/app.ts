@@ -12,6 +12,8 @@ import type { LiveSource } from "./audio/live-input.ts";
 import { Player } from "./audio/player.ts";
 import { loadCurrent, saveCurrent, sceneParamsFor } from "./presets.ts";
 import { eventsFromAnalysis, LiveMosaicFeed, MAX_SHAPES, MosaicPlanner, TEXELS_PER_SHAPE } from "./render/mosaic.ts";
+import { castHex } from "./render/cast-colors.ts";
+import { hexToLinear } from "./render/palettes.ts";
 import { QualityGovernor } from "./render/quality.ts";
 import { Reactor, sectionParams } from "./render/reactivity.ts";
 import { Renderer, SPECTROGRAM_ROWS } from "./render/renderer.ts";
@@ -24,14 +26,17 @@ import { songStore } from "./song-store.ts";
 import { lyricAt, parseLrc } from "./lyrics.ts";
 import type { LyricLine } from "./lyrics.ts";
 import { thumbnailTime } from "./export/thumbnail.ts";
-import { sceneById, SCENES, SCENES_UPDATED } from "./render/scenes/index.ts";
+import { sceneById, SCENES, SCENES_UPDATED, vjScenes } from "./render/scenes/index.ts";
+import { outroAt } from "./render/outro.ts";
+import { buildSongTexture, SONG_COLUMNS, SONG_ROWS } from "./render/portrait.ts";
 import type { SceneDef } from "./render/scenes/index.ts";
 import { ShaderError } from "./render/gl.ts";
 import { defaultSettings } from "./settings.ts";
 import { loadTempoFactor, saveTempoFactor } from "./tempo-memory.ts";
 import type { Settings } from "./settings.ts";
 import { Hud } from "./ui/hud.ts";
-import { drawLyric, drawTitleCard, titleAlpha } from "./ui/overlay.ts";
+import { clock, drawLyric, drawPoster, drawTitleCard, titleAlpha } from "./ui/overlay.ts";
+import type { PosterInfo } from "./ui/overlay.ts";
 
 const SPECTROGRAM_SPAN_SECONDS = 2;
 const MAX_PIXEL_RATIO = 2;
@@ -42,6 +47,7 @@ interface FeatureSource {
   spectrogram(t: number, rows: number, span: number, out: Float32Array): void;
   melodyLine(t: number, rows: number, span: number, out: Float32Array): void;
   sectionTimes(): Float32Array;
+  dropTimes(): ArrayLike<number>;
   downbeats(): Downbeats;
 }
 
@@ -58,6 +64,9 @@ const lyricsStore = songStore(
 );
 
 const FADE_SECONDS = 1.5;
+const PORTRAIT = "portrait";
+/** Below this the key estimate is a guess, so the poster leaves it out. */
+const KEY_CONFIDENCE = 0.6;
 /** Offline we know where sections are, so the crossfade starts early and the new scene lands on the change. */
 const FADE_LEAD_SECONDS = 0.75;
 
@@ -110,6 +119,7 @@ export class App {
   private lastFrame = performance.now();
   private lastTime = 0;
   private overlayKey = "";
+  private posterKey = "";
   private saveTimer = 0;
 
   constructor(canvas: HTMLCanvasElement, hudCanvas: HTMLCanvasElement) {
@@ -183,6 +193,7 @@ export class App {
       this.onStatus("Live input ended");
     };
     this.live = live;
+    this.applyCast();
     if (this.recordTap) live.connect(this.recordTap);
     this.trackName = kind === "mic" ? "Live: microphone" : "Live: shared audio";
     this.renderer.resetFeedback();
@@ -204,7 +215,23 @@ export class App {
     if (!this.live) return;
     this.live.stop();
     this.live = null;
+    this.applyCast();
     this.renderer.resetFeedback();
+  }
+
+  /** Cast colours of the loaded song; none for live input, which has no cast. */
+  get castColors(): string[] {
+    return this.live || !this.rawAnalysis ? [] : castHex(this.rawAnalysis.cast.members);
+  }
+
+  /** Cast colours and the Portrait's whole-song texture for whatever is playing now. */
+  private applyCast(): void {
+    this.hud.castColors = this.castColors;
+    const colors = this.castColors.map(hexToLinear);
+    this.reactor.setCast(colors);
+    this.fadeReactor.setCast(colors);
+    const song = this.live || !this.rawAnalysis ? new Float32Array(SONG_COLUMNS * SONG_ROWS * 4) : buildSongTexture(this.rawAnalysis);
+    this.renderer.song.upload(song);
   }
 
   private source(): FeatureSource | null {
@@ -227,6 +254,7 @@ export class App {
       void saveCachedAnalysis(key, analysis);
     }
     this.rawAnalysis = analysis;
+    this.applyCast();
     this.songKey = key;
     this.show = shows.load(key);
     this.lyrics = parseLrc(lyricsStore.load(key));
@@ -316,14 +344,22 @@ export class App {
         fade = { scene: from, uniforms: this.fadeReactor.build(f, withPalette(s, at.from.palette), this.paramsNow(from)), mix: at.mix };
       }
     } else if (s.autoScenes && source) {
-      const start = Math.max(0, SCENES.findIndex((x) => x.id === s.scene));
-      const events = buildSchedule(source.sectionTimes(), source.downbeats(), this.scheduleOptions());
-      const at = sceneAt(t, events, { sceneCount: SCENES.length, start, fade: FADE_SECONDS });
-      scene = SCENES[at.current];
+      const scenes = vjScenes();
+      const start = Math.max(0, scenes.findIndex((x) => x.id === s.scene));
+      const events = buildSchedule(source.sectionTimes(), source.downbeats(), this.scheduleOptions(), source.dropTimes());
+      const at = sceneAt(t, events, { sceneCount: scenes.length, start, fade: FADE_SECONDS });
+      scene = scenes[at.current];
       if (at.previous >= 0) {
-        const from = SCENES[at.previous];
+        const from = scenes[at.previous];
         fade = { scene: from, uniforms: this.fadeReactor.build(f, s, this.paramsNow(from)), mix: at.mix };
       }
+    }
+    const song = this.sampler !== null && !this.live;
+    const duration = this.analysis?.duration ?? 0;
+    const outro = song ? outroAt(t, duration, s.overlay.outro) : outroAt(0, 0, 0);
+    if (outro.mix > 0 && scene.id !== PORTRAIT) {
+      fade = outro.mix < 1 ? { scene, uniforms: this.fadeReactor.build(f, looks, this.paramsNow(scene)), mix: outro.mix } : undefined;
+      scene = sceneById(PORTRAIT);
     }
     if (scene.id !== this.activeScene) {
       this.renderer.setScene(scene);
@@ -335,8 +371,12 @@ export class App {
       uniforms.uShapeCount = shapes;
       if (fade) fade.uniforms.uShapeCount = shapes;
     }
+    const reveal = !song || duration <= 0 ? 0 : outro.mix > 0 ? outro.reveal : Math.min(1, t / duration);
+    uniforms.uReveal = reveal;
+    if (fade) fade.uniforms.uReveal = reveal;
+    const poster = song && scene.id === PORTRAIT ? (outro.mix > 0 ? outro.text : 1) : 0;
+    if (poster > 0) this.updatePosterText();
     this.updateOverlay();
-    const song = this.sampler !== null && !this.live;
     this.renderer.render(
       uniforms,
       s.look,
@@ -345,6 +385,7 @@ export class App {
         lyrics: s.overlay.showLyrics && song ? this.updateLyric(t) : 0,
         art: s.overlay.artMode,
         artSize: s.overlay.artSize,
+        poster,
       },
       dt,
       fade,
@@ -419,11 +460,11 @@ export class App {
   /** Auto VJ's choices for this song as cues, to start a show from. */
   autoVjCues(): Cue[] {
     if (!this.sampler) return [];
-    const start = Math.max(0, SCENES.findIndex((x) => x.id === this.settings.scene));
-    const events = buildSchedule(this.sampler.sectionTimes(), this.sampler.downbeats(), this.scheduleOptions());
+    const start = Math.max(0, vjScenes().findIndex((x) => x.id === this.settings.scene));
+    const events = buildSchedule(this.sampler.sectionTimes(), this.sampler.downbeats(), this.scheduleOptions(), this.sampler.dropTimes());
     return cuesFromSchedule(
       events,
-      SCENES.map((x) => x.id),
+      vjScenes().map((x) => x.id),
       start,
       FADE_LEAD_SECONDS,
     );
@@ -461,6 +502,64 @@ export class App {
       this.renderer.setLyrics(text ? drawLyric(w, h, text) : null);
     }
     return alpha;
+  }
+
+  /** What the Portrait's text says about the loaded song. */
+  posterInfo(): PosterInfo {
+    const a = this.rawAnalysis;
+    const o = this.settings.overlay;
+    if (!a) return { title: o.title, subtitle: o.subtitle, caption: "", cast: [], drops: [] };
+    const colors = this.castColors;
+    const key = a.key.confidence >= KEY_CONFIDENCE ? a.key.name : "";
+    return {
+      title: o.title,
+      subtitle: o.subtitle,
+      caption: [`${Math.round(this.analysis?.tempo ?? a.tempo)} BPM`, key, clock(a.duration)].filter(Boolean).join(" · "),
+      cast: a.cast.members.map((m, i) => ({ label: m.label, color: colors[i], from: clock(m.firstSeen) })),
+      drops: Array.from(a.events.drop.times, clock),
+    };
+  }
+
+  /** Redraws the poster text only when the song, title or canvas size changes. */
+  private updatePosterText(): void {
+    const [w, h] = [this.renderer.canvas.width, this.renderer.canvas.height];
+    const info = this.posterInfo();
+    const key = `${this.songKey}|${this.tempoFactor}|${info.title}|${info.subtitle}|${w}x${h}`;
+    if (key === this.posterKey) return;
+    this.posterKey = key;
+    this.renderer.setPosterText(drawPoster(w, h, info));
+  }
+
+  /**
+   * The song's Portrait as a still: fully drawn, with its title, cast and key. Borrows the canvas
+   * like the YouTube thumbnail does.
+   */
+  async renderPoster(width: number, height: number): Promise<Blob> {
+    const a = this.analysis;
+    if (!a || this.live) throw new Error("Load a song first");
+    const saved = this.settings;
+    const { useShow, exporting } = this;
+    const portrait = sceneById(PORTRAIT);
+    this.exporting = true;
+    this.useShow = false;
+    this.settings = {
+      ...saved,
+      scene: PORTRAIT,
+      autoScenes: false,
+      paletteCycle: false,
+      look: { ...saved.look, ...portrait.look },
+      overlay: { ...saved.overlay, showTitle: false, showLyrics: false, artMode: "off", outro: 0 },
+    };
+    try {
+      this.renderStill(a.duration, width, height, 0.3, 30);
+      return await new Promise<Blob>((resolve, reject) => this.renderer.canvas.toBlob((b) => (b ? resolve(b) : reject(new Error("PNG encoding failed"))), "image/png"));
+    } finally {
+      this.settings = saved;
+      this.useShow = useShow;
+      this.exporting = exporting;
+      this.activeScene = "";
+      this.renderer.resetFeedback();
+    }
   }
 
   private updateOverlay(): void {

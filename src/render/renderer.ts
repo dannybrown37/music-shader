@@ -4,6 +4,7 @@ import type { ArtMode, Settings } from "../settings.ts";
 import { createTarget, DataTexture, deleteTarget, FullscreenTriangle, Program } from "./gl.ts";
 import type { Target, UniformValue } from "./gl.ts";
 import { MAX_SHAPES, TEXELS_PER_SHAPE } from "./mosaic.ts";
+import { SONG_COLUMNS, SONG_ROWS } from "./portrait.ts";
 import type { SceneDef } from "./scenes/index.ts";
 import bloomSource from "./shaders/bloom.glsl?raw";
 import common from "./shaders/common.glsl?raw";
@@ -25,6 +26,8 @@ export interface Layers {
   lyrics: number;
   art: ArtMode;
   artSize: number;
+  /** Opacity of the Portrait's poster text. */
+  poster: number;
 }
 
 const BLOOM_LEVELS = 6;
@@ -46,6 +49,8 @@ export class Renderer {
   readonly melodyLine: DataTexture;
   /** Mosaic's shape records (see mosaic.ts); other scenes don't declare uShapes. */
   readonly shapes: DataTexture;
+  /** The whole song for the Portrait scene (see portrait.ts). */
+  readonly song: DataTexture;
   private readonly tri: FullscreenTriangle;
   private readonly feedback: Program;
   private readonly bloom: Program;
@@ -59,6 +64,8 @@ export class Renderer {
   private exposureKey = 0.05;
   private readonly overlayTexture: WebGLTexture;
   private readonly lyricsTexture: WebGLTexture;
+  private readonly posterTexture: WebGLTexture;
+  private hasPoster = false;
   private readonly artTexture: WebGLTexture;
   private artAspect = 0;
   private hasLyrics = false;
@@ -92,7 +99,9 @@ export class Renderer {
     this.spectrogram = new DataTexture(gl, MEL_BANDS, SPECTROGRAM_ROWS);
     this.melodyLine = new DataTexture(gl, 2, SPECTROGRAM_ROWS);
     this.shapes = new DataTexture(gl, TEXELS_PER_SHAPE, MAX_SHAPES, true);
+    this.song = new DataTexture(gl, SONG_COLUMNS, SONG_ROWS, true);
     this.overlayTexture = createImageTexture(gl, false);
+    this.posterTexture = createImageTexture(gl, false);
     this.lyricsTexture = createImageTexture(gl, false);
     this.artTexture = createImageTexture(gl, true);
   }
@@ -136,6 +145,11 @@ export class Renderer {
   setLyrics(image: TexImageSource | null): void {
     this.hasLyrics = image !== null;
     if (image) this.uploadImage(this.lyricsTexture, image, false);
+  }
+
+  setPosterText(image: TexImageSource | null): void {
+    this.hasPoster = image !== null;
+    if (image) this.uploadImage(this.posterTexture, image, false);
   }
 
   /** Cover art / logo. Mipmapped, since a large image is usually drawn much smaller. */
@@ -190,6 +204,7 @@ export class Renderer {
     program.set("uMelodyLine", this.melodyLine.texture);
     program.set("uPrev", prev.texture);
     program.set("uShapes", this.shapes.texture);
+    program.set("uSong", this.song.texture);
     this.tri.draw(target);
   }
 
@@ -212,6 +227,12 @@ export class Renderer {
     if (fading) this.drawScene(this.programFor(fadeFrom.scene), fadeFrom.uniforms, fromTarget, prev);
     const key = fading ? fadeFrom.scene.exposureKey + (this.exposureKey - fadeFrom.scene.exposureKey) * fadeFrom.mix : this.exposureKey;
 
+    // Choreography: through a build the trails lengthen and swirl inward; the drop flashes and blows them outward.
+    const build = (uniforms.uBuild as number) ?? 0;
+    const drop = (uniforms.uDrop as number) ?? 0;
+    const flash = drop * Math.exp(-((uniforms.uDropAge as number) ?? 60) / 0.12);
+    const calm = (uniforms.uCalm as number) ?? 1;
+
     const fb = this.feedback;
     fb.use();
     fb.set("uScene", sceneTarget.texture);
@@ -219,10 +240,11 @@ export class Renderer {
     fb.set("uSceneMix", fading ? fadeFrom.mix : 1);
     fb.set("uPrevFeedback", prev.texture);
     fb.set("uResolution", [next.width, next.height]);
-    fb.set("uAmount", look.feedback ** frames60);
+    const trails = look.feedback + (Math.max(look.feedback, 0.88) - look.feedback) * Math.min(1, 0.8 * build);
+    fb.set("uAmount", trails ** frames60);
     const kick = (uniforms.uKick as number) ?? 0;
-    fb.set("uZoom", look.feedbackZoom * (1 + 2 * kick) * frames60);
-    fb.set("uSpin", look.feedbackSpin * frames60);
+    fb.set("uZoom", (look.feedbackZoom * (1 + 2 * kick) - 0.012 * build + 0.06 * Math.min(1, drop * drop)) * frames60);
+    fb.set("uSpin", (look.feedbackSpin + 0.01 * build) * frames60);
     fb.set("uHueShift", look.feedbackHue * frames60);
     fb.set("uWarp", (uniforms.uBass as number) ?? 0);
     fb.set("uTime", (uniforms.uTime as number) ?? 0);
@@ -281,6 +303,8 @@ export class Renderer {
     comp.set("uOverlayAlpha", this.hasOverlay ? layers.title : 0);
     comp.set("uLyrics", this.lyricsTexture);
     comp.set("uLyricsAlpha", this.hasLyrics ? layers.lyrics : 0);
+    comp.set("uPoster", this.posterTexture);
+    comp.set("uPosterAlpha", this.hasPoster ? layers.poster : 0);
     comp.set("uArt", this.artTexture);
     comp.set("uArtMode", this.hasArt ? ART_MODES.indexOf(layers.art) : 0);
     comp.set("uArtSize", layers.artSize);
@@ -289,15 +313,17 @@ export class Renderer {
     comp.set("uResolution", this.size);
     comp.set("uTime", (uniforms.uTime as number) ?? 0);
     // The upsample chain sums every level, so normalise by the level count.
-    comp.set("uBloomStrength", (look.bloom * (1 + 0.6 * kick)) / BLOOM_LEVELS);
-    comp.set("uExposure", look.exposure);
+    comp.set("uBloomStrength", (look.bloom * (1 + 0.6 * kick + 2.5 * flash + 0.6 * drop)) / BLOOM_LEVELS);
+    // Quiet passages and builds sit darker after auto-exposure, so loud parts and drops have somewhere to go.
+    comp.set("uExposure", look.exposure * (0.55 + 0.45 * calm) * (1 - 0.35 * build));
     comp.set("uAdapted", adaptedNext.texture);
     comp.set("uAutoExposure", look.autoExposure);
     comp.set("uKey", key);
-    comp.set("uChromatic", look.chromatic * (0.3 + 1.5 * ((uniforms.uSnare as number) ?? 0) + 0.7 * kick));
-    comp.set("uGrain", look.grain);
-    comp.set("uVignette", look.vignette);
-    comp.set("uFlash", look.flash * Math.max(kick * 0.6, (uniforms.uSnare as number) ?? 0));
+    comp.set("uDesaturate", Math.min(0.85, 0.65 * build));
+    comp.set("uChromatic", look.chromatic * (0.3 + 1.5 * ((uniforms.uSnare as number) ?? 0) + 0.7 * kick) + 2.5 * flash);
+    comp.set("uGrain", look.grain * (1 + build));
+    comp.set("uVignette", Math.min(1.5, look.vignette + 0.7 * build));
+    comp.set("uFlash", Math.max(look.flash * Math.max(kick * 0.6, (uniforms.uSnare as number) ?? 0), Math.min(1.2, 1.1 * flash)));
     tri.draw(null, this.size);
   }
 

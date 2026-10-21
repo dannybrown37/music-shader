@@ -15,7 +15,8 @@ const LAMPS: [EventKind, string, string][] = [
   ["note", "NOTE", "#b478ff"],
   ["beat", "BEAT", "#888888"],
   ["downbeat", "BAR", "#ffffff"],
-  ["section", "SECTION", "#ff4fd8"],
+  ["section", "SECT", "#ff4fd8"],
+  ["drop", "DROP", "#ffb000"],
 ];
 
 const BARS: [ScalarName, string][] = [
@@ -46,6 +47,8 @@ export class Hud {
   private readonly ctx: CanvasRenderingContext2D;
   private readonly width = 300;
   private readonly height = 470;
+  /** The song's cast colours, lit by how much each is playing. */
+  castColors: string[] = [];
 
   constructor(canvas: HTMLCanvasElement) {
     this.canvas = canvas;
@@ -75,8 +78,8 @@ export class Hud {
     c.textBaseline = "middle";
 
     LAMPS.forEach(([kind, name, color], i) => {
-      const x = 22 + (i % 4) * 70;
-      const y = 22 + Math.floor(i / 4) * 30;
+      const x = 18 + (i % 5) * 56;
+      const y = 22 + Math.floor(i / 5) * 30;
       const v = Math.min(1, f.env[kind]);
       c.fillStyle = color;
       c.globalAlpha = 0.15 + 0.85 * v;
@@ -111,6 +114,19 @@ export class Hud {
     c.beginPath();
     c.arc(tx + s.timbreX * 38, ty - s.timbreY * 38, 4 + 3 * (s.timbreZ + 1), 0, Math.PI * 2);
     c.fill();
+
+    if (this.castColors.length > 0) {
+      c.fillStyle = "#777";
+      c.fillText("sounds", 212, 182);
+      this.castColors.forEach((color, i) => {
+        c.fillStyle = color;
+        c.globalAlpha = 0.15 + 0.85 * Math.min(1, f.cast[i]);
+        c.beginPath();
+        c.arc(218 + (i % 6) * 14, 198, 5, 0, Math.PI * 2);
+        c.fill();
+        c.globalAlpha = 1;
+      });
+    }
 
     const wy = 300;
     const wx = 230;

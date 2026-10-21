@@ -57,7 +57,7 @@ function buildMelFilters(sampleRate: number): MelFilter[] {
   return filters;
 }
 
-function buildDct(): Float32Array {
+export function buildDct(): Float32Array {
   const dct = new Float32Array(MFCC_COUNT * MEL_BANDS);
   for (let c = 0; c < MFCC_COUNT; c++) {
     const scale = Math.sqrt((c === 0 ? 1 : 2) / MEL_BANDS);

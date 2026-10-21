@@ -50,9 +50,10 @@ scenes-png t="95":
     n=0
     for id in $(grep -oP '^\s+id: "\K\w+' src/render/scenes/index.ts); do
         n=$((n + 1))
+        if [ "$n" -le 10 ]; then key=$((n % 10)); else key="–"; fi
         node tools/shot.ts --scene "$id" --t {{t}} --w 720 --h 404 --out "out/scenes/$id.png" > /dev/null
         convert "out/scenes/$id.png" -resize 360x202 -fill white -pointsize 13 -gravity southwest \
-            -annotate +8+6 "$((n % 10))  $id" "out/scenes/$id-tile.png"
+            -annotate +8+6 "$key  $id" "out/scenes/$id-tile.png"
         tiles+=("out/scenes/$id-tile.png")
     done
     montage "${tiles[@]}" -tile 5x -geometry +0+0 docs/scenes.png

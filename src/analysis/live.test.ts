@@ -18,6 +18,24 @@ function feed(audio: Float32Array): LiveAnalyzer {
 /** Ignore the first seconds while adaptive ranges and the tempo estimate warm up. */
 const after = (times: number[], t0: number): number[] => times.filter((t) => t >= t0);
 
+describe("LiveAnalyzer drops", () => {
+  it("notices the drums coming in after a quiet pad, once", () => {
+    const quiet = pad(16, 0.03);
+    const loud = drumPattern(124, 12, true).audio;
+    const audio = new Float32Array(quiet.length + loud.length);
+    audio.set(quiet);
+    audio.set(loud, quiet.length);
+    const drops = Array.from(feed(audio).eventTimes("drop"));
+    expect(drops.length).toBe(1);
+    expect(drops[0]).toBeGreaterThan(16);
+    expect(drops[0]).toBeLessThan(17.5);
+  });
+
+  it("finds none in steady drums", () => {
+    expect(feed(drumPattern(124, 24, true).audio).eventTimes("drop").length).toBe(0);
+  });
+});
+
 describe("LiveAnalyzer drums", () => {
   const truth = drumPattern(124, 16, true);
   const live = feed(truth.audio);

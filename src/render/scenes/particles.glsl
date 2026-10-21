@@ -170,7 +170,7 @@ void main() {
     vec2 p = dir * ORB_RADIUS + ballistic(dir * 0.3 + vec2(0.0, 0.2), 1.2, -0.04, n.x);
     p += 0.04 * n.x * vec2(sin(n.x * 2.7 + seed), cos(n.x * 2.1 + seed * 1.3));
     float life = 1.0 - n.x / ORB_LIFE;
-    vec3 c = mix(ramp(0.4 + 0.6 * fifths / 11.0), vec3(1.0), 0.25);
+    vec3 c = noteColor(i, mix(ramp(0.4 + 0.6 * fifths / 11.0), vec3(1.0), 0.25));
     float pop = 1.0 + 3.0 * exp(-n.x * 8.0);
     col += c * glow(uv - p, 0.025 + 0.025 * life) * n.y * life * pop * 2.0 * p_orbs;
     if (i > 0) {
@@ -181,6 +181,7 @@ void main() {
     newerLife = life;
   }
 
+  col += ramp(0.95) * dropRing(uv) * 1.5;
   col *= 1.0 + 0.25 * uSection;
   fragColor = vec4(col, 1.0);
 }

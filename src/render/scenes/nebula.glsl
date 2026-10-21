@@ -97,8 +97,9 @@ void main() {
     vec2 d = uv - NOTE_RADIUS * vec2(cos(ang), sin(ang));
     float s = 0.03 + n.x * 0.12;
     float flare = exp(-dot(d, d) / (s * s)) + 0.25 * exp(-length(d) * 9.0);
-    col += mix(ramp(0.9), palette(pc / 12.0), 0.6) * flare * n.y * exp(-n.x * 2.5) * p_notes * 1.5;
+    col += noteColor(i, mix(ramp(0.9), palette(pc / 12.0), 0.6)) * flare * n.y * exp(-n.x * 2.5) * p_notes * 1.5;
   }
+  col += ramp(0.95) * dropRing(uv) * (0.4 + 1.6 * density);
 
   vec2 g = uv * 26.0;
   vec2 id = floor(g);

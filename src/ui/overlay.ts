@@ -46,6 +46,91 @@ function wrap(ctx: CanvasRenderingContext2D, text: string, maxWidth: number): st
   return lines;
 }
 
+export interface PosterInfo {
+  title: string;
+  subtitle: string;
+  /** e.g. "128 BPM · E minor · 3:18" */
+  caption: string;
+  cast: { label: string; color: string; from: string }[];
+  /** Drop times, e.g. ["0:28", "2:08"]. */
+  drops: string[];
+}
+
+const FONT = `"Inter", "Segoe UI", "Helvetica Neue", sans-serif`;
+
+/** Seconds as m:ss. */
+export function clock(t: number): string {
+  const s = Math.max(0, Math.floor(t));
+  return `${Math.floor(s / 60)}:${(s % 60).toString().padStart(2, "0")}`;
+}
+
+/**
+ * Text for the Portrait: the title in the hush at the ring's centre, the cast in one corner and
+ * a key to reading the ring in the other. Sized against the shorter side so square posters fit.
+ */
+export function drawPoster(width: number, height: number, info: PosterInfo): HTMLCanvasElement {
+  const canvas = document.createElement("canvas");
+  canvas.width = width;
+  canvas.height = height;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return canvas;
+  const unit = Math.min(width, height) / 1080;
+  const cx = width / 2;
+  const cy = height / 2;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "alphabetic";
+  ctx.shadowColor = "rgba(0,0,0,0.8)";
+  ctx.shadowBlur = 12 * unit;
+
+  // The ring's hush is ~0.23 of the half-height across; fit the title inside it.
+  const room = 0.44 * (height / 2) * 0.95;
+  let size = 44 * unit;
+  ctx.letterSpacing = `${Math.round(3 * unit)}px`;
+  const title = info.title.toUpperCase();
+  do {
+    ctx.font = `300 ${Math.round(size)}px ${FONT}`;
+    size *= 0.92;
+  } while (ctx.measureText(title).width > room && size > 12 * unit);
+  ctx.fillStyle = "rgba(255,255,255,0.96)";
+  ctx.fillText(title, cx, cy + 4 * unit);
+  ctx.font = `400 ${Math.round(13 * unit)}px ${FONT}`;
+  ctx.letterSpacing = `${Math.round(4 * unit)}px`;
+  ctx.fillStyle = "rgba(255,255,255,0.6)";
+  if (info.subtitle) ctx.fillText(info.subtitle.toUpperCase(), cx, cy - 40 * unit);
+  ctx.fillText(info.caption.toUpperCase(), cx, cy + 38 * unit);
+
+  const margin = 40 * unit;
+  const line = 24 * unit;
+  ctx.textAlign = "left";
+  ctx.letterSpacing = `${Math.round(2 * unit)}px`;
+  ctx.font = `500 ${Math.round(12 * unit)}px ${FONT}`;
+  const castTop = height - margin - info.cast.length * line;
+  if (info.cast.length > 0) {
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.fillText("SOUNDS", margin, castTop - 6 * unit);
+  }
+  info.cast.forEach((m, i) => {
+    const y = castTop + (i + 0.8) * line;
+    ctx.fillStyle = m.color;
+    ctx.beginPath();
+    ctx.arc(margin + 6 * unit, y - 5 * unit, 5 * unit, 0, Math.PI * 2);
+    ctx.fill();
+    ctx.fillStyle = "rgba(255,255,255,0.85)";
+    ctx.font = `400 ${Math.round(14 * unit)}px ${FONT}`;
+    ctx.fillText(m.label, margin + 20 * unit, y);
+    ctx.fillStyle = "rgba(255,255,255,0.45)";
+    ctx.font = `400 ${Math.round(12 * unit)}px ${FONT}`;
+    ctx.fillText(`from ${m.from}`, margin + 20 * unit + ctx.measureText(m.label).width + 40 * unit, y);
+  });
+
+  ctx.textAlign = "right";
+  ctx.fillStyle = "rgba(255,255,255,0.45)";
+  ctx.font = `400 ${Math.round(12 * unit)}px ${FONT}`;
+  const key = ["time runs clockwise from twelve", "bass inside · treble outside", "outer line = the melody", ...(info.drops.length ? [`drops at ${info.drops.join(" · ")}`] : [])];
+  key.forEach((text, i) => ctx.fillText(text, width - margin, height - margin - (key.length - 1 - i) * line * 0.8));
+  return canvas;
+}
+
 export function drawTitleCard(width: number, height: number, title: string, subtitle: string): HTMLCanvasElement {
   const canvas = document.createElement("canvas");
   canvas.width = width;

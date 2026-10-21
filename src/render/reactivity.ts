@@ -1,3 +1,4 @@
+import { MAX_CAST } from "../analysis/cast.ts";
 import { RECENT_COUNT } from "../analysis/sampler.ts";
 import type { Features } from "../analysis/sampler.ts";
 import type { Settings } from "../settings.ts";
@@ -85,18 +86,37 @@ export class Reactor {
   private readonly shake = new Float32Array(2);
   private readonly timbre = new Float32Array(3);
   private readonly timbreSlow = new Float32Array(3);
+  private readonly castColor = new Float32Array(MAX_CAST * 3);
+  private castCount = 0;
+
+  /** The song's cast colours (linear RGB), one per member; empty for live input. */
+  setCast(colors: Rgb[]): void {
+    this.castColor.fill(0);
+    this.castCount = Math.min(MAX_CAST, colors.length);
+    for (let i = 0; i < this.castCount; i++) this.castColor.set(colors[i], i * 3);
+  }
 
   build(f: Features, s: Settings, sceneParams: Record<string, number>): Record<string, UniformValue> {
     const r = s.reactivity;
     const sens = r.sensitivity;
     const u = this.u;
     const sc = f.scalars;
-    const ev = (v: number, gain: number): number => Math.min(2, v * gain * sens);
-    const level = (v: number, gain: number): number => Math.min(1.5, v * gain * sens);
+    const calm = 1 - r.dynamics * QUIET_DAMPING * (1 - smoothstep(0.15, 0.65, sc.intensity));
+    const gain = sens * calm;
+    const ev = (v: number, g: number): number => Math.min(2, v * g * gain);
+    const level = (v: number, g: number): number => Math.min(1.5, v * g * gain);
+    const rd = r.drop;
 
     u.uTime = f.time;
-    u.uFlow = r.motion * (0.4 * f.time + sens * f.energyTime);
+    u.uFlow = r.motion * (0.4 * f.time + sens * (f.energyTime + Math.min(rd, 1.2) * f.choreoTime));
     u.uSeed = hash(f.count.section + 1) * 10;
+    u.uCalm = calm;
+    u.uBuild = Math.min(1, sc.build) * rd;
+    u.uDrop = Math.min(1.5, f.env.drop) * rd;
+    u.uDropAge = Math.min(60, f.since.drop);
+    const age = f.recent.drop[0];
+    const punch = age >= 0 ? f.recent.drop[1] * Math.exp(-age * 2.5) * Math.cos(age * 8) : 0;
+    u.uCamZoom = 1 + rd * (0.22 * sc.build * sc.build - 0.2 * punch);
 
     u.uLoud = level(sc.loudness, 1);
     u.uIntensity = sc.intensity;
@@ -155,6 +175,11 @@ export class Reactor {
     u.uNoteHist = this.noteHist;
     u.uNotePitch = f.notePitch;
     u.uNoteCount = f.count.note;
+    u.uCastCount = this.castCount;
+    u.uCastColor = this.castColor;
+    u.uCastNow = f.cast;
+    u.uNoteCast = f.noteCast;
+    u.uCastMix = this.castCount > 0 ? r.cast : 0;
 
     const angle = hash(f.count.kick) * Math.PI * 2;
     const amp = 0.025 * s.look.shake * (u.uKick as number);
@@ -172,6 +197,14 @@ export class Reactor {
     for (const key in sceneParams) u[`p_${key}`] = sceneParams[key];
     return u;
   }
+}
+
+/** At "Quiet vs loud" = 1, the quietest passages react at 1 − this of full strength. */
+const QUIET_DAMPING = 0.4;
+
+function smoothstep(a: number, b: number, x: number): number {
+  const t = Math.max(0, Math.min(1, (x - a) / (b - a)));
+  return t * t * (3 - 2 * t);
 }
 
 function copyHistory(src: Float32Array, dst: Float32Array, gain: number): void {

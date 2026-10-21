@@ -47,6 +47,8 @@ export interface MosaicEvent {
   timbre?: Timbre;
   /** Pitch class 0..11 for notes, -1 when unknown. */
   pitch?: number;
+  /** Cast member that played it (notes from an analysed song), -1 when unknown. */
+  cast?: number;
 }
 
 export interface Geometry {
@@ -69,6 +71,8 @@ export interface Shape extends Geometry {
   /** Palette position from the per-song timbre PCA: the same instrument keeps its colour. */
   hue: number;
   pitch: number;
+  /** Cast member, whose colour replaces the timbre hue; -1 when unknown. */
+  cast: number;
 }
 
 export interface Cycle {
@@ -215,6 +219,7 @@ export class MosaicPlanner {
       strength: e.strength,
       hue,
       pitch: e.pitch ?? -1,
+      cast: e.cast ?? -1,
       ...shapeGeometry(kind, timbre),
     });
     return true;
@@ -266,7 +271,7 @@ export class MosaicPlanner {
       out[o + 12] = s.pitch;
       out[o + 13] = (DRAIN_STAGGER * (s.y + 1)) / 2;
       out[o + 14] = Number.isFinite(struck[i]) ? t - struck[i] : -1;
-      out[o + 15] = 0;
+      out[o + 15] = s.cast;
       n++;
     }
     return n;
@@ -277,6 +282,7 @@ export class MosaicPlanner {
 export function eventsFromAnalysis(a: TrackAnalysis): MosaicEvent[] {
   const out: MosaicEvent[] = [];
   const frameAt = (t: number): number => Math.min(a.frames - 1, Math.max(0, Math.round((t + NOTE_PITCH_DELAY) * a.fps)));
+  const castAt = (t: number): number => a.cast.ids[Math.floor((t + NOTE_PITCH_DELAY) / a.cast.blockSeconds)] ?? -1;
   for (const kind of ["kick", "snare", "note"] as const) {
     const { times, strengths } = a.events[kind];
     for (let i = 0; i < times.length; i++) {
@@ -288,6 +294,7 @@ export function eventsFromAnalysis(a: TrackAnalysis): MosaicEvent[] {
         strength: strengths[i],
         timbre: { brightness: s.brightness[f], noisiness: s.noisiness[f], tonalness: s.tonalness[f], timbreX: s.timbreX[f], timbreY: s.timbreY[f] },
         pitch: kind === "note" ? dominantPitch(a.chroma, f * 12) : -1,
+        cast: kind === "note" ? castAt(times[i]) : -1,
       });
     }
   }

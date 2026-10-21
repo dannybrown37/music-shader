@@ -84,7 +84,7 @@ void main() {
     float glow = exp(-d / (width * 3.0)) * 0.25;
     float shimmer = 1.0 + 0.6 * uVoice * sin(z * 24.0 - uTime * 9.0);
     float fadeIn = smoothstep(0.0, 0.04, age) * smoothstep(1.0, 0.7, age);
-    wall += mix(ramp(0.9), vec3(1.0, 0.85, 0.7), 0.4 * uVoice) * (core + glow) * smoothstep(0.15, 0.5, ml.y) * shimmer * fadeIn * p_melody * 1.6;
+    wall += castNow(mix(ramp(0.9), vec3(1.0, 0.85, 0.7), 0.4 * uVoice)) * (core + glow) * smoothstep(0.15, 0.5, ml.y) * shimmer * fadeIn * p_melody * 1.6;
   }
 
   float lane = floor((aa / TAU + 0.5) * 48.0);

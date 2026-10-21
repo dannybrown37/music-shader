@@ -107,12 +107,13 @@ void main() {
     float c = uChroma[k];
     float lit = c * c * c * (0.35 + 0.8 * uTonal + 1.2 * uNote);
     float d = length(uv - p);
-    vec3 noteCol = mix(ramp(0.35 + 0.6 * pos / 11.0), vec3(1.0), 0.15);
+    vec3 noteCol = castNow(mix(ramp(0.35 + 0.6 * pos / 11.0), vec3(1.0), 0.15));
     col += noteCol * lit * (exp(-d * 28.0) * 2.0 + exp(-d * 10.0) * 0.15) * p_wheel;
     float arc = exp(-abs(r - WHEEL_R) * 120.0) * exp(-angleDist(a, th) * 6.0);
     col += noteCol * arc * lit * 0.6 * p_wheel;
   }
 
+  col += ramp(0.95) * dropRing(uv) * 1.5;
   col *= 1.0 + 0.3 * uSection;
   fragColor = vec4(col, 1.0);
 }

@@ -71,7 +71,12 @@ void main() {
 
     // Stay between the vivid stops: the dark and highlight stops would read as "no colour".
     float birth = exp(-hit * 9.0) * min(b.w, 1.5);
-    vec3 tint = mix(palette(0.22 + 0.45 * g.w), uPal3, 0.6 * min(birth, 1.0));
+    vec3 own = palette(0.22 + 0.45 * g.w);
+    if (d3.w >= 0.0 && uCastCount > 0.5) {
+      vec3 member = uCastColor[int(d3.w + 0.5)];
+      own = mix(own, member * dot(own, vec3(0.2126, 0.7152, 0.0722)) / max(dot(member, vec3(0.2126, 0.7152, 0.0722)), 1e-3), uCastMix);
+    }
+    vec3 tint = mix(own, uPal3, 0.6 * min(birth, 1.0));
     float lit = 0.35 + p_glow * (0.9 * activity + 2.5 * birth);
     float fill;
     if (kind < 0.5) {

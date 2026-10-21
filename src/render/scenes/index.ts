@@ -6,6 +6,7 @@ import mosaic from "./mosaic.glsl?raw";
 import nebula from "./nebula.glsl?raw";
 import orb from "./orb.glsl?raw";
 import particles from "./particles.glsl?raw";
+import portrait from "./portrait.glsl?raw";
 import terrain from "./terrain.glsl?raw";
 import tessellate from "./tessellate.glsl?raw";
 import tunnel from "./tunnel.glsl?raw";
@@ -33,6 +34,8 @@ export interface SceneDef {
   /** Typical average linear luminance of a well-exposed frame; auto-exposure steers toward it. */
   exposureKey: number;
   palette: string;
+  /** false keeps the scene out of Auto VJ's rotation. */
+  autoVj?: boolean;
 }
 
 export const SCENES: SceneDef[] = [
@@ -231,7 +234,29 @@ export const SCENES: SceneDef[] = [
     palette: "Aurora",
     exposureKey: 0.03,
   },
+  {
+    id: "portrait",
+    name: "Portrait",
+    description: "The whole song as one ring, drawn as it plays: time around, frequency outward, colour = the sound playing; drops fire rays",
+    source: portrait,
+    params: [
+      { key: "rings", label: "Spectrum", min: 0, max: 3, value: 1 },
+      { key: "glow", label: "Outline glow", min: 0, max: 3, value: 1 },
+      { key: "melody", label: "Melody orbit", min: 0, max: 3, value: 1 },
+      { key: "hits", label: "Drum rings & hat dust", min: 0, max: 3, value: 1 },
+      { key: "rays", label: "Build-ups & drop rays", min: 0, max: 3, value: 1 },
+    ],
+    look: { feedback: 0, feedbackZoom: 0, feedbackSpin: 0, bloom: 0.9, bloomThreshold: 0.7, chromatic: 0.15, vignette: 0.35, grain: 0.06, shake: 0 },
+    palette: "Ember",
+    exposureKey: 0.02,
+    autoVj: false,
+  },
 ];
+
+/** Scenes Auto VJ cycles through (Portrait is a summary, not a performance). */
+export function vjScenes(): SceneDef[] {
+  return SCENES.filter((s) => s.autoVj !== false);
+}
 
 export function sceneById(id: string): SceneDef {
   return SCENES.find((s) => s.id === id) ?? SCENES[0];
