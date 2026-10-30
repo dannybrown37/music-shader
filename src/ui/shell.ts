@@ -100,6 +100,8 @@ export class Shell {
       button.hidden = !this.sources.includes(kind);
       button.onclick = (): void => this.start(kind);
     }
+    const phoneHint = this.welcome.querySelector<HTMLElement>(".phone-hint");
+    if (phoneHint) phoneHint.hidden = !this.sources.includes("mic") || this.sources.includes("tab");
     if (!this.sources.includes("mic")) {
       this.welcome.querySelector(".mic-hint")?.remove();
       this.welcome.querySelector('[data-source="file"]')?.classList.add("primary");

@@ -31,13 +31,18 @@ export class LiveInput {
   }
 
   static async start(ctx: AudioContext, kind: LiveSource): Promise<LiveInput> {
-    const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: false };
+    // Mobile Safari only lets an AudioContext start inside the tap; after the permission prompt it's too late.
+    const resumed = ctx.state === "running" ? Promise.resolve() : ctx.resume();
+    // A phone mic across the room is far quieter than shared tab audio; let the browser level it up.
+    const audio = { echoCancellation: false, noiseSuppression: false, autoGainControl: kind === "mic" };
     const stream = kind === "mic" ? await navigator.mediaDevices.getUserMedia({ audio }) : await navigator.mediaDevices.getDisplayMedia({ video: true, audio });
     if (stream.getAudioTracks().length === 0) {
       for (const t of stream.getTracks()) t.stop();
       throw new Error("No audio was shared. In Chrome's dialog pick a tab and tick “Also share tab audio”.");
     }
     // The share dialog insists on video. It's left running because stopping it can end the share.
+    await resumed;
+    // Opening the mic switches iOS's audio session, which can interrupt the context again.
     if (ctx.state !== "running") await ctx.resume();
     // Registering the same processor name twice throws, so load the module once per context.
     let ready = workletLoaded.get(ctx);
@@ -47,8 +52,12 @@ export class LiveInput {
     }
     await ready;
     const source = ctx.createMediaStreamSource(stream);
-    const node = new AudioWorkletNode(ctx, "capture", { numberOfInputs: 1, numberOfOutputs: 0, channelCount: 2, channelCountMode: "explicit" });
+    const node = new AudioWorkletNode(ctx, "capture", { numberOfInputs: 1, numberOfOutputs: 1, channelCount: 2, channelCountMode: "explicit" });
+    // Safari never calls process() on a node nothing pulls from, so route it into a muted sink.
+    const mute = ctx.createGain();
+    mute.gain.value = 0;
     source.connect(node);
+    node.connect(mute).connect(ctx.destination);
     return new LiveInput(ctx.sampleRate, stream, source, node);
   }
 
