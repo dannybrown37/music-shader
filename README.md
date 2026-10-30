@@ -25,8 +25,9 @@ Pick a song under **Music → Library** (served from `MUSIC_DIR`, default
 `../deluge-quest/web/public/audio`), drop any audio file on the page, or press <kbd>O</kbd>.
 Analysis takes a few seconds per song, then press <kbd>Space</kbd>.
 
-The same app deploys to GitHub Pages (`.github/workflows/pages.yml`). The public site has no
-library, so visitors drop their own audio file.
+The same app deploys to GitHub Pages (`.github/workflows/pages.yml`) at
+<https://shader.dannybrown.dev> (`public/CNAME`). The public site has no library, so visitors
+drop their own audio file.
 
 ```bash
 MUSIC_DIR=~/Music just dev    # use a different folder
