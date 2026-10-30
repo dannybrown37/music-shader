@@ -168,7 +168,9 @@ export class Shell {
     this.dock.classList.toggle("live", live);
     const play = $("play");
     play.textContent = live ? "■" : app.player.playing ? "❚❚" : "▶";
-    play.setAttribute("aria-label", live ? "Stop listening" : app.player.playing ? "Pause" : "Play");
+    const playLabel = live ? "Stop listening" : app.player.playing ? "Pause" : "Play";
+    play.setAttribute("aria-label", playLabel);
+    play.title = `${playLabel} (Space)`;
     if (live) {
       const bpm = app.features.tempo;
       $("track-name").textContent = bpm > 0 ? `${Math.round(bpm)} BPM` : "";

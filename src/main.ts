@@ -36,6 +36,8 @@ function formatTime(t: number): string {
 
 async function main(): Promise<void> {
   const params = new URLSearchParams(location.search);
+  // Canvas text (title card, poster, lyrics) is drawn once and cached, so it must not render in a fallback font.
+  await document.fonts.load('400 1em "Inter"').catch(() => undefined);
   let app: App;
   try {
     app = new App($("view"), $("hud"));

@@ -192,6 +192,14 @@ export class App {
       this.stopLive();
       this.onStatus("Live input ended");
     };
+    live.onStall = (stalled): void => {
+      this.onStatus(
+        stalled
+          ? "Your phone paused the mic (another app took over audio). Retrying… If it stays paused, play the music from a different device or speaker."
+          : "Mic is back",
+        stalled,
+      );
+    };
     this.live = live;
     this.applyCast();
     if (this.recordTap) live.connect(this.recordTap);
