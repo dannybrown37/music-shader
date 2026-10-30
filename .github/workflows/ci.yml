@@ -25,6 +25,6 @@ jobs:
       # Every scene's shader compiles and draws a frame in headless Chrome (software WebGL).
       - name: Shader smoke test
         run: |
-          npx vite preview --port 4173 --strictPort &
-          for _ in $(seq 1 60); do curl -sf http://127.0.0.1:4173/ > /dev/null && break; sleep 1; done
+          npx vite preview --host 127.0.0.1 --port 4173 --strictPort &
+          curl -sf --retry 60 --retry-delay 1 --retry-all-errors -o /dev/null http://127.0.0.1:4173/
           npm run smoke -- --base http://127.0.0.1:4173
