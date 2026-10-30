@@ -21,13 +21,27 @@ just dev            # http://localhost:5173
 just open           # (WSL) opens it in Windows Chrome, which has your real GPU
 ```
 
-Pick a song under **Music → Library** (served from `MUSIC_DIR`, default
-`../deluge-quest/web/public/audio`), drop any audio file on the page, or press <kbd>O</kbd>.
-Analysis takes a few seconds per song, then press <kbd>Space</kbd>.
+The start screen offers **Listen** (microphone), **Capture a browser tab** (desktop only),
+**Open a song file**, and in dev a library picker (served from `MUSIC_DIR`, default
+`../deluge-quest/web/public/audio`). You can also drop any audio file on the page or press <kbd>O</kbd>.
 
 The same app deploys to GitHub Pages (`.github/workflows/pages.yml`) at
-<https://shader.dannybrown.dev> (`public/CNAME`). The public site has no library, so visitors
-drop their own audio file.
+<https://shader.dannybrown.dev> (`public/CNAME`). The public site has no library. On a phone,
+the main use is: play music in any app, open the site, tap **Listen**.
+
+### Controls
+
+```
+┌──────────────────────────────────────────────┐
+│ ■  ● Listening                      128 BPM  │  stop / play, seek bar for files
+│ ‹ │  Scene: Nebula  │ › │ Auto │ ✦ │ More    │  scene sheet, Auto VJ, surprise, settings
+└──────────────────────────────────────────────┘
+```
+
+- Tap the visuals to hide or show the controls; swipe left/right to change scene. They fade by themselves while music plays.
+- **More** holds a short list: source, colours, five feel sliders, Auto VJ, battery saver, fullscreen, share.
+- **More → Advanced controls** opens the full panel (every slider, presets, show editing with its timeline, export).
+- The screen stays awake while visualising (Wake Lock API, where supported).
 
 ```bash
 MUSIC_DIR=~/Music just dev    # use a different folder
@@ -146,8 +160,9 @@ Saves MP4 where Chrome supports it, otherwise WebM; both upload to YouTube.
 
 ## Live input
 
-*Music → Live: microphone / line-in* or *Live: tab or system audio*. For tab audio,
-Chrome's share dialog needs "Also share tab audio" ticked. Live mode uses a causal
+**Listen** (microphone) or **Capture a browser tab** on the start screen or under **More**. For tab audio,
+Chrome's share dialog needs "Also share tab audio" ticked. The mic is opened with echo
+cancellation off, so a phone hears its own speaker. Live mode uses a causal
 analyser (about 25 ms look-ahead, adaptive normalisation), and the tempo locks after
 about 4 s.
 

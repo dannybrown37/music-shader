@@ -1,10 +1,17 @@
 :root {
   color-scheme: dark;
-  --ui-bg: rgba(10, 10, 14, 0.72);
-  --ui-fg: #e8e6e3;
-  --ui-dim: #8d8a86;
+  --glass: rgba(14, 13, 18, 0.66);
+  --glass-strong: rgba(16, 15, 20, 0.92);
+  --line: rgba(255, 255, 255, 0.09);
+  --fg: #efece8;
+  --dim: #9a958f;
   --accent: #ff7a45;
-  font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  --accent-soft: rgba(255, 122, 69, 0.16);
+  --radius: 18px;
+  --safe-b: env(safe-area-inset-bottom, 0px);
+  --safe-t: env(safe-area-inset-top, 0px);
+  font-family: "Inter", "Segoe UI", system-ui, -apple-system, sans-serif;
+  -webkit-tap-highlight-color: transparent;
 }
 
 [hidden] {
@@ -21,7 +28,13 @@ body {
   height: 100%;
   background: #000;
   overflow: hidden;
-  color: var(--ui-fg);
+  color: var(--fg);
+  overscroll-behavior: none;
+}
+
+button {
+  font: inherit;
+  color: inherit;
 }
 
 #view {
@@ -29,165 +42,540 @@ body {
   inset: 0;
   width: 100vw;
   height: 100vh;
+  height: 100dvh;
   object-fit: contain;
   display: block;
   background: #000;
+  touch-action: none;
 }
 
 #hud {
   position: fixed;
   left: 12px;
-  top: 12px;
+  top: calc(12px + var(--safe-t));
   pointer-events: none;
 }
 
-body.ui-hidden #transport,
+/* Controls fade away while the music plays; a tap or mouse move brings them back. */
+#dock,
+#timeline,
+.lil-gui.lil-root,
+#advanced-close {
+  transition: opacity 0.35s;
+}
+
+body.idle #dock,
+body.idle #timeline,
+body.ui-hidden #dock,
 body.ui-hidden #timeline,
-body.ui-hidden .lil-gui.lil-root,
 body.ui-hidden #hud {
   opacity: 0;
   pointer-events: none;
 }
 
-body.idle #transport,
-body.idle #timeline,
-body.idle .lil-gui.lil-root {
-  opacity: 0;
+/* ---------- welcome ---------- */
+
+#welcome {
+  position: fixed;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  padding: calc(24px + var(--safe-t)) 20px calc(24px + var(--safe-b));
+  box-sizing: border-box;
+  text-align: center;
+  background: radial-gradient(ellipse at 50% 45%, rgba(0, 0, 0, 0.62), rgba(0, 0, 0, 0.35) 70%);
+  text-shadow: 0 1px 8px #000;
+  overflow-y: auto;
 }
 
-#transport,
-#timeline,
-.lil-gui.lil-root {
-  transition: opacity 0.4s;
+#welcome h1 {
+  margin: 0;
+  font-weight: 250;
+  letter-spacing: 0.32em;
+  text-transform: uppercase;
+  font-size: clamp(22px, 6vw, 42px);
+  text-shadow: 0 2px 16px #000;
 }
 
-#timeline {
+#welcome .lede {
+  margin: 4px 0 22px;
+  color: var(--dim);
+  font-size: 15px;
+}
+
+.sources {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  width: min(420px, 100%);
+}
+
+.source {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 14px 16px;
+  min-height: 64px;
+  text-align: left;
+  background: var(--glass);
+  backdrop-filter: blur(14px);
+  -webkit-backdrop-filter: blur(14px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  transition:
+    transform 0.12s,
+    border-color 0.2s;
+}
+
+.source:hover {
+  border-color: rgba(255, 255, 255, 0.22);
+}
+
+.source:active {
+  transform: scale(0.98);
+}
+
+.source strong {
+  display: block;
+  font-weight: 600;
+  font-size: 16px;
+}
+
+.source small {
+  display: block;
+  margin-top: 2px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.source .icon {
+  flex: none;
+  width: 40px;
+  height: 40px;
+  display: grid;
+  place-items: center;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
+  font-size: 17px;
+}
+
+.source.primary {
+  min-height: 84px;
+  background: linear-gradient(135deg, rgba(255, 122, 69, 0.95), rgba(255, 79, 140, 0.9));
+  border-color: transparent;
+  color: #120804;
+}
+
+.source.primary small {
+  color: rgba(18, 8, 4, 0.72);
+}
+
+.source.primary strong {
+  font-size: 19px;
+}
+
+.source.primary .icon {
+  width: 48px;
+  height: 48px;
+  background: rgba(0, 0, 0, 0.18);
+  color: #fff;
+  animation: pulse 1.6s ease-in-out infinite;
+}
+
+@keyframes pulse {
+  50% {
+    box-shadow: 0 0 0 10px rgba(255, 255, 255, 0);
+    transform: scale(1.06);
+  }
+  0%,
+  100% {
+    box-shadow: 0 0 0 0 rgba(255, 255, 255, 0.35);
+  }
+}
+
+#library {
+  min-height: 48px;
+  padding: 0 14px;
+  border-radius: var(--radius);
+  background: var(--glass);
+  border: 1px solid var(--line);
+  color: var(--fg);
+  font: inherit;
+}
+
+#welcome .hint {
+  margin: 14px 0 0;
+  max-width: 420px;
+  color: var(--dim);
+  font-size: 12px;
+  line-height: 1.9;
+}
+
+#welcome .keys {
+  display: none;
+}
+
+@media (hover: hover) and (pointer: fine) {
+  #welcome .keys {
+    display: block;
+  }
+}
+
+kbd {
+  border: 1px solid #555;
+  border-radius: 4px;
+  padding: 1px 5px;
+  font-size: 11px;
+  margin: 0 1px;
+  font-family: inherit;
+}
+
+/* ---------- dock ---------- */
+
+#dock {
   position: fixed;
   left: 50%;
-  bottom: 66px;
+  bottom: calc(12px + var(--safe-b));
   transform: translateX(-50%);
-  width: min(760px, calc(100vw - 40px));
-  height: 46px;
-  cursor: pointer;
-  touch-action: none;
+  width: min(640px, calc(100vw - 20px));
+  box-sizing: border-box;
+  padding: 8px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  background: var(--glass);
+  backdrop-filter: blur(16px) saturate(1.2);
+  -webkit-backdrop-filter: blur(16px) saturate(1.2);
+  border: 1px solid var(--line);
+  border-radius: 22px;
+  font-size: 13px;
 }
 
 #transport {
-  position: fixed;
-  left: 50%;
-  bottom: 18px;
-  transform: translateX(-50%);
   display: flex;
   align-items: center;
   gap: 10px;
-  padding: 8px 14px;
-  width: min(760px, calc(100vw - 40px));
-  box-sizing: border-box;
-  background: var(--ui-bg);
-  backdrop-filter: blur(8px);
-  border-radius: 999px;
-  font-size: 12px;
+  padding: 2px 6px;
+  min-height: 36px;
   font-variant-numeric: tabular-nums;
+  color: var(--dim);
 }
 
-#transport button {
+.round {
   all: unset;
+  flex: none;
   cursor: pointer;
-  width: 28px;
-  height: 28px;
+  width: 36px;
+  height: 36px;
   border-radius: 50%;
   display: grid;
   place-items: center;
   background: var(--accent);
   color: #000;
-  font-size: 12px;
+  font-size: 13px;
 }
 
 #seek {
   flex: 1;
+  min-width: 40px;
   accent-color: var(--accent);
-  min-width: 60px;
+  height: 28px;
 }
 
 #track-name {
-  color: var(--ui-dim);
   max-width: 34%;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+#live-label {
+  display: none;
+  align-items: center;
+  gap: 8px;
+  color: var(--fg);
+  font-weight: 500;
+}
+
+#live-label .dot {
+  width: 9px;
+  height: 9px;
+  border-radius: 50%;
+  background: #ff4f5a;
+  box-shadow: 0 0 10px #ff4f5a;
+  animation: blink 1.4s ease-in-out infinite;
+}
+
+@keyframes blink {
+  50% {
+    opacity: 0.35;
+  }
+}
+
+/* Live input: no seeking, just a Listening badge and the stop button. */
+#dock.live #time,
+#dock.live #duration,
+#dock.live #seek {
+  display: none;
+}
+
+#dock.live #live-label {
+  display: inline-flex;
+}
+
+#dock.live #track-name {
+  flex: 1;
+  max-width: none;
+  text-align: right;
+}
+
+#actions {
+  display: flex;
+  align-items: stretch;
+  gap: 4px;
+}
+
+#actions button {
+  flex: 1;
+  min-width: 0;
+  min-height: 52px;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  padding: 4px 2px;
+  background: rgba(255, 255, 255, 0.04);
+  border: 0;
+  border-radius: 14px;
+  cursor: pointer;
+  transition: background 0.15s;
+}
+
+#actions button:hover {
+  background: rgba(255, 255, 255, 0.09);
+}
+
+#actions button:active {
+  background: rgba(255, 255, 255, 0.14);
+}
+
+#actions small {
+  font-size: 11px;
+  color: var(--dim);
+  letter-spacing: 0.02em;
+}
+
+#actions .glyph {
+  font-size: 18px;
+  line-height: 1;
+}
+
+#actions .scene-step {
+  flex: 0 0 34px;
+  font-size: 24px;
+  color: var(--dim);
+}
+
+#actions .scene-name {
+  flex: 2.2;
+}
+
+#scene-name {
+  font-size: 15px;
+  font-weight: 600;
+  max-width: 100%;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+#actions .toggle[aria-pressed="true"] {
+  background: var(--accent-soft);
+  color: var(--accent);
+}
+
+#actions .toggle[aria-pressed="true"] small {
+  color: var(--accent);
+}
+
+#timeline {
+  position: fixed;
+  left: 50%;
+  bottom: calc(132px + var(--safe-b));
+  transform: translateX(-50%);
+  width: min(640px, calc(100vw - 20px));
+  height: 46px;
+  cursor: pointer;
+  touch-action: none;
+}
+
+/* The show timeline is an editing tool: only with the advanced panel open. */
+body:not(.advanced) #timeline {
+  display: none;
+}
+
+/* ---------- status toast ---------- */
+
 #status {
   position: fixed;
   left: 50%;
-  top: 18px;
+  top: calc(14px + var(--safe-t));
   transform: translateX(-50%);
-  padding: 8px 16px;
-  background: var(--ui-bg);
-  border-radius: 8px;
+  z-index: 20000;
+  padding: 10px 16px;
+  background: var(--glass-strong);
+  border: 1px solid var(--line);
+  border-radius: 14px;
   font-size: 13px;
-  max-width: 80vw;
+  line-height: 1.4;
+  max-width: min(560px, calc(100vw - 32px));
+  box-sizing: border-box;
   white-space: pre-wrap;
+  text-align: center;
 }
 
 #status.error {
-  color: #ff8a80;
+  color: #ffb4a8;
+  border-color: rgba(255, 120, 100, 0.4);
 }
 
 #drop {
   position: fixed;
   inset: 0;
+  z-index: 30000;
   display: grid;
   place-items: center;
-  font-size: 28px;
+  font-size: 26px;
   background: rgba(0, 0, 0, 0.6);
   border: 3px dashed var(--accent);
 }
 
-#browser {
+/* ---------- sheets ---------- */
+
+.sheet-backdrop {
   position: fixed;
   inset: 0;
   z-index: 10000;
-  display: grid;
-  place-items: center;
-  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: flex-end;
+  justify-content: center;
+  background: rgba(0, 0, 0, 0.45);
+  animation: fade 0.2s;
 }
 
-#browser .sheet {
-  width: min(1100px, 94vw);
-  max-height: 88vh;
+.sheet {
+  width: min(720px, 100vw);
+  max-height: 82vh;
+  max-height: 82dvh;
   overflow-y: auto;
-  padding: 14px 18px 18px;
-  background: var(--ui-bg);
-  border-radius: 12px;
-  backdrop-filter: blur(6px);
+  overscroll-behavior: contain;
+  box-sizing: border-box;
+  padding: 10px 18px calc(22px + var(--safe-b));
+  background: var(--glass-strong);
+  backdrop-filter: blur(18px);
+  -webkit-backdrop-filter: blur(18px);
+  border: 1px solid var(--line);
+  border-bottom: 0;
+  border-radius: 22px 22px 0 0;
+  animation: rise 0.25s cubic-bezier(0.2, 0.8, 0.2, 1);
 }
 
-#browser header {
+.sheet::before {
+  content: "";
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 0 auto 8px;
+  border-radius: 2px;
+  background: rgba(255, 255, 255, 0.2);
+}
+
+@keyframes rise {
+  from {
+    transform: translateY(40px);
+    opacity: 0;
+  }
+}
+
+@keyframes fade {
+  from {
+    opacity: 0;
+  }
+}
+
+@media (min-width: 760px) {
+  .sheet-backdrop {
+    align-items: center;
+  }
+  .sheet {
+    border-radius: 22px;
+    border-bottom: 1px solid var(--line);
+    padding-bottom: 22px;
+  }
+  .sheet::before {
+    display: none;
+  }
+}
+
+.sheet header {
+  position: sticky;
+  top: -10px;
+  z-index: 1;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  margin-bottom: 10px;
+  margin: 0 -18px;
+  padding: 4px 18px 8px;
+  background: var(--glass-strong);
 }
 
-#browser h2 {
+.sheet h2 {
   margin: 0;
-  font-size: 15px;
-  font-weight: 500;
+  font-size: 18px;
+  font-weight: 600;
 }
 
-#browser .close {
-  background: none;
+.sheet h3 {
+  margin: 22px 0 10px;
+  font-size: 12px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: var(--dim);
+}
+
+.sheet .sub {
+  margin: 0 0 14px;
+  color: var(--dim);
+  font-size: 13px;
+}
+
+.sheet .close {
+  width: 40px;
+  height: 40px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.07);
   border: 0;
-  color: inherit;
-  font-size: 18px;
+  font-size: 15px;
   cursor: pointer;
 }
 
 #browser .grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 12px;
+}
+
+@media (max-width: 520px) {
+  #browser .grid {
+    grid-template-columns: repeat(2, 1fr);
+    gap: 10px;
+  }
 }
 
 #browser .thumb {
@@ -197,9 +585,8 @@ body.idle .lil-gui.lil-root {
   padding: 0;
   background: none;
   border: 0;
-  color: inherit;
-  font: inherit;
   font-size: 13px;
+  font-weight: 500;
   cursor: pointer;
   text-align: left;
 }
@@ -208,72 +595,194 @@ body.idle .lil-gui.lil-root {
   width: 100%;
   height: auto;
   aspect-ratio: 16 / 9;
-  background: #000;
-  border-radius: 6px;
+  object-fit: cover;
+  background: #111;
+  border-radius: 12px;
   outline: 2px solid transparent;
+  outline-offset: 2px;
   transition: outline-color 0.15s;
 }
 
 #browser .thumb:hover img,
-#browser .thumb:focus-visible img {
+#browser .thumb:focus-visible img,
+#browser .thumb.current img {
   outline-color: var(--accent);
 }
 
-@media (max-width: 700px) {
-  #browser .grid {
-    grid-template-columns: repeat(2, 1fr);
-    gap: 8px;
-  }
+/* ---------- settings sheet ---------- */
+
+.row {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  min-height: 48px;
+  border-top: 1px solid var(--line);
 }
 
-#welcome {
-  position: fixed;
-  left: 50%;
-  top: 50%;
-  transform: translate(-50%, -50%);
+.row:first-of-type {
+  border-top: 0;
+}
+
+.row label,
+.row .label {
+  flex: 1;
+  font-size: 15px;
+}
+
+.row label small,
+.row .label small {
+  display: block;
+  color: var(--dim);
+  font-size: 12px;
+  margin-top: 1px;
+}
+
+.row input[type="range"] {
+  flex: 1.3;
+  min-width: 0;
+  accent-color: var(--accent);
+  height: 32px;
+}
+
+.switch {
+  appearance: none;
+  -webkit-appearance: none;
+  flex: none;
+  position: relative;
+  width: 50px;
+  height: 30px;
+  margin: 0;
+  border-radius: 15px;
+  background: rgba(255, 255, 255, 0.16);
+  cursor: pointer;
+  transition: background 0.2s;
+}
+
+.switch::after {
+  content: "";
+  position: absolute;
+  top: 3px;
+  left: 3px;
+  width: 24px;
+  height: 24px;
+  border-radius: 50%;
+  background: #fff;
+  transition: transform 0.2s;
+}
+
+.switch:checked {
+  background: var(--accent);
+}
+
+.switch:checked::after {
+  transform: translateX(20px);
+}
+
+.chips {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 40px;
+  padding: 0 14px;
+  border-radius: 20px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  cursor: pointer;
+}
+
+.chip.on {
+  border-color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.chip .swatch {
+  width: 28px;
+  height: 12px;
+  border-radius: 6px;
+}
+
+.buttons {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 8px;
+}
+
+.btn {
+  min-height: 46px;
+  padding: 0 14px;
+  border-radius: 14px;
+  background: rgba(255, 255, 255, 0.07);
+  border: 1px solid var(--line);
+  font-size: 14px;
+  cursor: pointer;
   text-align: center;
-  pointer-events: none;
-  text-shadow: 0 2px 12px #000;
 }
 
-#welcome h1 {
-  font-weight: 300;
-  letter-spacing: 0.3em;
-  text-transform: uppercase;
-  font-size: clamp(22px, 5vw, 44px);
+.btn:hover {
+  background: rgba(255, 255, 255, 0.12);
 }
 
-#welcome .keys {
-  color: var(--ui-dim);
-  font-size: 13px;
-  line-height: 2;
+.btn.accent {
+  background: var(--accent);
+  color: #120804;
+  border-color: transparent;
+  font-weight: 600;
 }
 
-kbd {
-  border: 1px solid #555;
-  border-radius: 4px;
-  padding: 1px 5px;
-  font-size: 11px;
-  margin: 0 1px;
+/* ---------- advanced (lil-gui) ---------- */
+
+body:not(.advanced) .lil-gui.lil-root {
+  display: none;
 }
 
 .lil-gui.lil-root {
-  --background-color: rgba(10, 10, 14, 0.82);
-  --title-background-color: rgba(30, 28, 30, 0.9);
+  --background-color: rgba(14, 13, 18, 0.9);
+  --title-background-color: rgba(30, 28, 34, 0.95);
+  --widget-color: rgba(255, 255, 255, 0.08);
+  --hover-color: rgba(255, 255, 255, 0.14);
+  --focus-color: rgba(255, 255, 255, 0.18);
   --number-color: var(--accent);
-  --focus-color: #3a3634;
-  max-height: calc(100vh - 90px);
+  --string-color: #ffc39e;
+  --font-family: "Inter", "Segoe UI", system-ui, sans-serif;
+  top: calc(56px + var(--safe-t)) !important;
+  max-height: calc(100vh - 70px - var(--safe-t));
   overflow-y: auto;
+  border-radius: 12px;
+  z-index: 9000;
+}
+
+#advanced-close {
+  position: fixed;
+  top: calc(10px + var(--safe-t));
+  right: 15px;
+  z-index: 9001;
+  min-height: 38px;
+  padding: 0 18px;
+  border-radius: 19px;
+  border: 0;
+  background: var(--accent);
+  color: #120804;
+  font-weight: 600;
+  cursor: pointer;
 }
 
 @media (max-width: 700px) {
   .lil-gui.lil-root {
-    width: min(260px, 70vw) !important;
+    --widget-height: 30px;
+    --font-size: 13px;
+    --input-font-size: 15px;
+    left: 8px !important;
+    right: 8px !important;
+    width: auto !important;
   }
-  #track-name {
+  body.advanced #dock {
     display: none;
-  }
-  #status {
-    top: 44px;
   }
 }

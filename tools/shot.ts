@@ -12,6 +12,8 @@
  * --ui --live song.wav runs the live-input path with the WAV as a fake microphone (add --hud for meters).
  * --ui --keys TD presses each character as a key (1.5 s apart) before the screenshot;
  *   named keys go in braces: --keys "{Space}4K{ArrowRight}2K".
+ * --ui --welcome opens the app with no track (the start screen); --mobile emulates a touch phone
+ *   (use --w 390 --h 844); --click "#a,.b" clicks each selector (1 s apart) before the screenshot.
  */
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
@@ -40,6 +42,9 @@ async function main(): Promise<void> {
       live: { type: "string" },
       hud: { type: "boolean", default: false },
       keys: { type: "string" },
+      welcome: { type: "boolean", default: false },
+      mobile: { type: "boolean", default: false },
+      click: { type: "string" },
       out: { type: "string", default: "out/shot.png" },
       base: { type: "string", default: "http://127.0.0.1:5173" },
       timeout: { type: "string", default: "240" },
@@ -50,8 +55,12 @@ async function main(): Promise<void> {
   try {
     if (values.ui) {
       // The live app: load the track, let the UI settle, capture whatever is on screen.
-      const q = new URLSearchParams(values.live ? { live: "mic", scene: values.scene } : { track: values.track, scene: values.scene });
+      const q = new URLSearchParams(values.live ? { live: "mic", scene: values.scene } : values.welcome ? {} : { track: values.track, scene: values.scene });
       if (values.hud) q.set("hud", "1");
+      if (values.mobile) {
+        await cdp.send("Emulation.setDeviceMetricsOverride", { width: Number(values.w), height: Number(values.h), deviceScaleFactor: 2, mobile: true });
+        await cdp.send("Emulation.setTouchEmulationEnabled", { enabled: true, maxTouchPoints: 5 });
+      }
       await cdp.send("Page.navigate", { url: `${values.base}/?${q}` });
       await new Promise((r) => setTimeout(r, Number(values.timeout) * 1000));
       for (const [token, named] of (values.keys ?? "").matchAll(/\{(\w+)\}|./g)) {
@@ -61,6 +70,10 @@ async function main(): Promise<void> {
         await cdp.send("Input.dispatchKeyEvent", { type: "keyDown", key, code, text });
         await cdp.send("Input.dispatchKeyEvent", { type: "keyUp", key, code });
         await new Promise((r) => setTimeout(r, 1500));
+      }
+      for (const selector of (values.click ?? "").split(",").filter(Boolean)) {
+        await cdp.evaluate(`document.querySelector(${JSON.stringify(selector)})?.click()`);
+        await new Promise((r) => setTimeout(r, 1000));
       }
       const shot = (await cdp.send("Page.captureScreenshot", { format: "png" })) as { data: string };
       mkdirSync(dirname(values.out), { recursive: true });

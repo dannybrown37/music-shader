@@ -44,7 +44,7 @@ export class Panel {
     this.gui = gui;
     const changed = (): void => app.settingsChanged();
 
-    const music = gui.addFolder("Music");
+    const music = gui.addFolder("Music").close();
     if (tracks.length > 0) {
       this.state.track = tracks[0];
       this.trackController = music
@@ -67,7 +67,7 @@ export class Panel {
     music.add({ tab: live("tab") }, "tab").name("Live: tab or system audio");
     music.add({ stop: () => app.stopLive() }, "stop").name("Stop live input");
 
-    const presets = gui.addFolder("Presets");
+    const presets = gui.addFolder("Presets").close();
     this.presetController = presets.add(this.state, "preset", this.presetNames()).name("Load").onChange((name: string) => this.applyPreset(name));
     presets.add(this.state, "saveAs").name("Name");
     presets.add({ browse: actions.browsePresets }, "browse").name("Browse presets… (B)");
@@ -153,7 +153,11 @@ export class Panel {
     app.hud.visible = s.overlay.showHud;
     this.state.preset = SCENES.find((x) => x.id === s.scene)?.name ?? "";
     this.presetController?.updateDisplay();
-    if (window.innerWidth < 700) gui.close();
+  }
+
+  /** Re-read every control after something outside the panel changed settings. */
+  refresh(): void {
+    this.gui.controllersRecursive().forEach((c) => c.updateDisplay());
   }
 
   /** Show: hand-placed scene changes for this song, edited here and on the timeline. */
@@ -415,7 +419,7 @@ export class Panel {
     URL.revokeObjectURL(a.href);
   }
 
-  private async copyShareLink(): Promise<void> {
+  async copyShareLink(): Promise<void> {
     const url = `${location.origin}${location.pathname}#${encodeShare(this.app.settings)}`;
     try {
       await navigator.clipboard.writeText(url);

@@ -40,6 +40,8 @@ Legend: **[you]** needs you (a real GPU, Windows, or a decision) · **[auto]** I
 
 ## Still open
 
+- [ ] **[you]** New mobile UI on a real phone (deployed site): tap Listen while Spotify/YouTube Music plays. Does the music keep playing (iOS may pause it when the mic opens)? Does the screen stay awake? Swipe / tap feel?
+
 - [ ] **[you]** Watch a build → drop in Windows Chrome (Haus of You 1:55–2:10, Fatal Glimpse 0:18–0:30): too much? too little? (*Reactivity → Build-up & drop*)
 - [ ] **[you]** Listen with the debug meters (D): do the *sounds* lamps change when you'd say the instrument changes?
 - [ ] **[you]** Export a poster and a video with the outro; Portrait frame rate on the real GPU

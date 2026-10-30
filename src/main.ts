@@ -9,6 +9,7 @@ import { decodeShare } from "./share.ts";
 import { LiveRecorder } from "./export/recorder.ts";
 import { PresetBrowser } from "./ui/browser.ts";
 import { Panel } from "./ui/panel.ts";
+import { Shell } from "./ui/shell.ts";
 import { Timeline } from "./ui/timeline.ts";
 
 const $ = <T extends HTMLElement>(id: string): T => {
@@ -117,25 +118,27 @@ async function main(): Promise<void> {
     if (timeline.selected !== null && !timeline.selectedCue) timeline.select(null);
   };
 
+  let shell: Shell | null = null;
   browser = new PresetBrowser(
     $("browser"),
     app,
     () => panel.presetEntries(),
-    (name) => panel.applyPreset(name),
+    (name) => {
+      panel.applyPreset(name);
+      shell?.pickedScene();
+    },
   );
+  shell = new Shell(app, panel, browser, tracks, openFile);
+  const ui = shell;
 
-  const welcome = $("welcome");
-  welcome.hidden = false;
   app.onTrackLoaded = (): void => {
-    welcome.hidden = true;
     panel.setTrack(app.trackName);
-    $("track-name").textContent = app.settings.overlay.title;
+    ui.sourceStarted();
   };
 
   wireTransport(app);
   wireDragDrop(app, panel);
-  wireKeys(app, panel, browser, openFile);
-  wireIdle(app);
+  wireKeys(app, panel, browser, ui, openFile);
   app.start();
 
   if (params.has("hud")) {
@@ -157,12 +160,10 @@ async function main(): Promise<void> {
 }
 
 function wireTransport(app: App): void {
-  const play = $<HTMLButtonElement>("play");
   const seek = $<HTMLInputElement>("seek");
   const time = $("time");
   const duration = $("duration");
   let dragging = false;
-  play.onclick = (): void => void app.togglePlay();
   seek.oninput = (): void => {
     dragging = true;
   };
@@ -173,12 +174,8 @@ function wireTransport(app: App): void {
   const tick = (): void => {
     const d = app.player.duration;
     const t = app.player.time;
-    play.textContent = app.player.playing ? "❚❚" : "▶";
-    play.setAttribute("aria-label", app.player.playing ? "Pause" : "Play");
-    const live = app.isLive;
-    time.textContent = live ? "● LIVE" : formatTime(t);
-    duration.textContent = live ? "" : formatTime(d);
-    seek.disabled = live;
+    time.textContent = formatTime(t);
+    duration.textContent = formatTime(d);
     if (!dragging && d > 0) seek.value = String(t / d);
     requestAnimationFrame(tick);
   };
@@ -210,16 +207,18 @@ function wireDragDrop(app: App, panel: Panel): void {
   });
 }
 
-function wireKeys(app: App, panel: Panel, browser: PresetBrowser, openFile: () => void): void {
+function wireKeys(app: App, panel: Panel, browser: PresetBrowser, shell: Shell, openFile: () => void): void {
   window.addEventListener("keydown", (e) => {
-    if (e.target instanceof HTMLInputElement && e.target.type !== "range") return;
+    if (e.target instanceof HTMLInputElement && e.target.type !== "range" && e.target.type !== "checkbox") return;
     const s = app.settings;
     if (e.key === "b" || e.key === "B") {
       browser.toggle();
       return;
     }
-    if (e.key === "Escape" && browser.isOpen) {
-      browser.close();
+    if (e.key === "Escape") {
+      if (browser.isOpen) browser.close();
+      else if (shell.settingsOpen) shell.closeSettings();
+      else shell.setAdvanced(false);
       return;
     }
     if (e.code === "Space") {
@@ -248,7 +247,10 @@ function wireKeys(app: App, panel: Panel, browser: PresetBrowser, openFile: () =
       showStatus(`Palette: ${s.palette}`);
     } else if (/^[0-9]$/.test(e.key)) {
       const scene = SCENES[(Number(e.key) + 9) % 10];
-      if (scene) panel.applyPreset(scene.name);
+      if (scene) {
+        panel.applyPreset(scene.name);
+        shell.pickedScene();
+      }
     } else return;
     app.settingsChanged();
   });
@@ -275,22 +277,6 @@ async function toggleRecording(app: App): Promise<void> {
     if (err instanceof DOMException && err.name === "AbortError") return;
     showStatus(`Can't record: ${err instanceof Error ? err.message : String(err)}`, true);
   }
-}
-
-/** While playing, fades the UI out after a few seconds without input, for clean screen recordings. */
-function wireIdle(app: App): void {
-  let timer = 0;
-  const wake = (): void => {
-    document.body.classList.remove("idle");
-    window.clearTimeout(timer);
-    timer = window.setTimeout(function hideIfPlaying() {
-      if (app.player.playing) document.body.classList.add("idle");
-      else timer = window.setTimeout(hideIfPlaying, 1000);
-    }, 3000);
-  };
-  window.addEventListener("mousemove", wake);
-  window.addEventListener("keydown", wake);
-  wake();
 }
 
 /**

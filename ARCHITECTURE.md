@@ -61,7 +61,8 @@ src/
     palettes.ts        4-stop gradients, section cycling
     shaders/           common.glsl (shared header), feedback, bloom, luminance, composite
     scenes/            one .glsl per scene + index.ts registry (params, look, palette)
-  ui/                  lil-gui panel, debug HUD, title card + lyric drawing, preset browser, show timeline
+  ui/                  shell (start screen, dock, sheets, gestures, wake lock), lil-gui "advanced" panel,
+                       debug HUD, title card + lyric drawing, scene/preset browser, show timeline
   export/video.ts      offline WebCodecs export via mediabunny
   export/recorder.ts   real-time recording (canvas + audio) via MediaRecorder
   export/thumbnail.ts  picks the song's most intense moment for the YouTube thumbnail
