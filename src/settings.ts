@@ -64,6 +64,17 @@ export type LookKey = keyof typeof LOOK_RANGES;
 
 export const AUTO_CUT_BARS = [1, 2, 4, 8];
 
+export const FOOTAGE_MODES = ["auto", "camera", "shader"] as const;
+export type FootageMode = (typeof FOOTAGE_MODES)[number];
+export const FOOTAGE_RANGES = {
+  cameraShare: { min: 0, max: 1, step: 0.05, label: "Camera share", help: "How much of the song stays on the camera (quietest parts first)" },
+  fadeBars: { min: 0, max: 8, step: 1, label: "Transition (bars)" },
+  intro: { min: 0, max: 60, step: 1, label: "Open on camera (s)" },
+  glow: { min: 0, max: 3, label: "LED glow", help: "How brightly the footage's lights carry into the shader during a transition" },
+  pop: { min: 0, max: 1, label: "Pop on scene change", help: "How far the camera swells in around each scene change" },
+  cameraMax: { min: 0, max: 1, label: "Camera max", help: "Most the camera ever shows: lower keeps just the lit synths over the shader, 1 allows the plain video" },
+} satisfies Record<string, Range>;
+
 export interface Settings {
   scene: string;
   palette: string;
@@ -86,6 +97,8 @@ export interface Settings {
   look: Record<LookKey, number>;
   /** Per-scene parameter values keyed by scene id then param key. */
   sceneParams: Record<string, Record<string, number>>;
+  /** Only matters when the loaded file is a video: when to show the camera instead of the shader. */
+  footage: { mode: FootageMode } & Record<keyof typeof FOOTAGE_RANGES, number>;
   overlay: {
     title: string;
     subtitle: string;
@@ -97,6 +110,8 @@ export interface Settings {
     showLyrics: boolean;
     /** Seconds at the end of the song that recap it as the Portrait (0 = off). */
     outro: number;
+    /** Title, BPM, key and cast over the Portrait at the end; off leaves just the picture. */
+    posterText: boolean;
   };
 }
 
@@ -117,9 +132,9 @@ export function defaultSettings(): Settings {
     paletteCycle: true,
     sectionLooks: 0.3,
     autoScenes: false,
-    autoSceneSeconds: 24,
+    autoSceneSeconds: 8,
     autoCuts: true,
-    autoCutIntensity: 0.75,
+    autoCutIntensity: 0.6,
     autoCutBars: 4,
     reactivity: { sensitivity: 1, kick: 1, snare: 1, hat: 1, onset: 0.6, bass: 1, timbre: 1, harmony: 0.35, melody: 1, motion: 1, drop: 1, dynamics: 0.5, cast: 0.8 },
     decay: { kick: 0.18, snare: 0.22, hat: 0.07, onset: 0.12, note: 0.3, beat: 0.15, downbeat: 0.5, section: 2.5, drop: 1.6 },
@@ -140,7 +155,8 @@ export function defaultSettings(): Settings {
       renderScale: 1,
     },
     sceneParams: {},
-    overlay: { title: "", subtitle: "", showTitle: false, showHud: false, artMode: "off", artSize: 1, showLyrics: true, outro: 12 },
+    footage: { mode: "auto", cameraShare: 0, fadeBars: 2, intro: 6, glow: 1, pop: 0.45, cameraMax: 0.6 },
+    overlay: { title: "", subtitle: "", showTitle: false, showHud: false, artMode: "off", artSize: 1, showLyrics: true, outro: 12, posterText: false },
   };
 }
 
@@ -179,6 +195,14 @@ export function mergeSettings(base: Settings, patch: unknown): Settings {
       copyNumbers(out.sceneParams[scene], params, true);
     }
   }
+  if (isObject(patch.footage)) {
+    const f = patch.footage;
+    if (FOOTAGE_MODES.includes(f.mode as FootageMode)) out.footage.mode = f.mode as FootageMode;
+    for (const [k, r] of Object.entries(FOOTAGE_RANGES) as [keyof typeof FOOTAGE_RANGES, Range][]) {
+      const v = f[k];
+      if (typeof v === "number" && Number.isFinite(v)) out.footage[k] = Math.min(r.max, Math.max(r.min, v));
+    }
+  }
   if (isObject(patch.overlay)) {
     const o = patch.overlay;
     if (typeof o.title === "string") out.overlay.title = o.title;
@@ -189,6 +213,7 @@ export function mergeSettings(base: Settings, patch: unknown): Settings {
     if (typeof o.artSize === "number" && Number.isFinite(o.artSize)) out.overlay.artSize = Math.min(ART_SIZE.max, Math.max(ART_SIZE.min, o.artSize));
     if (typeof o.showLyrics === "boolean") out.overlay.showLyrics = o.showLyrics;
     if (typeof o.outro === "number" && Number.isFinite(o.outro)) out.overlay.outro = Math.min(OUTRO_RANGE.max, Math.max(OUTRO_RANGE.min, o.outro));
+    if (typeof o.posterText === "boolean") out.overlay.posterText = o.posterText;
   }
   return out;
 }

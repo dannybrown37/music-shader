@@ -27,6 +27,9 @@ uniform sampler2D uAdapted;     // 1×1: log of the eye-adapted average luminanc
 uniform float uAutoExposure;    // 0 = fixed exposure, 1 = fully normalise to uKey
 uniform float uKey;
 uniform float uDesaturate;      // build-ups drain the colour before the drop
+uniform sampler2D uVideo;       // camera footage, shown untouched when uCamera = 1
+uniform float uVideoAspect;
+uniform float uCamera;          // 0 shader .. 1 camera; in between the dark parts dissolve first
 
 in vec2 vUv;
 out vec4 fragColor;
@@ -60,6 +63,14 @@ void main() {
   col += g * uGrain * 0.12 * (1.0 - luma * 0.7);
 
   col = pow(max(col, 0.0), vec3(1.0 / 2.2));
+
+  if (uCamera > 0.0) {
+    vec2 s = aspect > uVideoAspect ? vec2(1.0, uVideoAspect / aspect) : vec2(aspect / uVideoAspect, 1.0);
+    vec2 uv = 0.5 + d * s;
+    vec3 v = texture(uVideo, vec2(uv.x, 1.0 - uv.y)).rgb;
+    float l = dot(v, vec3(0.2126, 0.7152, 0.0722));
+    col = mix(col, v, smoothstep(0.0, 1.0, (l - 1.0 + 2.0 * uCamera) * 2.0));
+  }
 
   // p: centred, screen height = 1.
   vec2 p = d * vec2(aspect, 1.0);

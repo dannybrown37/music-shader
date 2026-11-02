@@ -14,6 +14,9 @@ uniform float uSpin;
 uniform float uHueShift;
 uniform float uWarp;
 uniform float uTime;
+uniform sampler2D uVideo;       // camera footage (sRGB, not flipped)
+uniform float uVideoAspect;
+uniform float uVideoLed;        // mid-transition: the footage's lights feed the trails and bloom
 
 in vec2 vUv;
 out vec4 fragColor;
@@ -39,6 +42,13 @@ void main() {
   vec3 prev = hueRotate(texture(uPrevFeedback, p + 0.5).rgb, uHueShift);
   vec3 scene = texture(uScene, vUv).rgb;
   if (uSceneMix < 1.0) scene = mix(texture(uSceneFrom, vUv).rgb, scene, uSceneMix);
+  if (uVideoLed > 0.0) {
+    vec2 s = aspect > uVideoAspect ? vec2(1.0, uVideoAspect / aspect) : vec2(aspect / uVideoAspect, 1.0);
+    vec2 uv = 0.5 + (vUv - 0.5) * s;
+    vec3 v = texture(uVideo, vec2(uv.x, 1.0 - uv.y)).rgb;
+    float l = dot(v, vec3(0.2126, 0.7152, 0.0722));
+    scene += pow(v, vec3(2.2)) * smoothstep(0.45, 0.85, l) * uVideoLed;
+  }
   float cover = clamp(dot(scene, vec3(0.2126, 0.7152, 0.0722)), 0.0, 1.0);
   fragColor = vec4(scene + prev * uAmount * (1.0 - cover), 1.0);
 }

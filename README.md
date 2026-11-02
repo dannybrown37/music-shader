@@ -56,6 +56,7 @@ MUSIC_DIR=~/Music just dev    # use a different folder
 | <kbd>1</kbd>–<kbd>9</kbd>, <kbd>0</kbd> | switch scene (loads its built-in preset; <kbd>0</kbd> is scene 10) |
 | <kbd>K</kbd> | add a show cue: the current scene from the nearest downbeat |
 | <kbd>Del</kbd> | delete the selected show cue |
+| <kbd>V</kbd> | video files: flip camera ⇄ shader from the nearest downbeat (<kbd>Shift</kbd>+<kbd>V</kbd>: back to automatic) |
 | <kbd>B</kbd> | browse presets: each rendered at this moment of the song |
 | <kbd>T</kbd> | tempo as detected → ×2 → ÷2 (remembered per song) |
 | <kbd>C</kbd> | record live: start / stop |
@@ -64,7 +65,7 @@ MUSIC_DIR=~/Music just dev    # use a different folder
 | <kbd>D</kbd> | debug meters: what the analyser hears |
 | <kbd>H</kbd> | hide all UI |
 | <kbd>F</kbd> | fullscreen |
-| <kbd>O</kbd> | open an audio file |
+| <kbd>O</kbd> | open an audio or video file |
 
 ## Scenes
 
@@ -151,6 +152,23 @@ on; exports follow them too.
 Export is **offline**: frame *i* is rendered at exactly *t = i / fps*, so the video is
 perfectly smooth even if your GPU can't do that resolution live. Click the button again
 to cancel.
+
+### Mixing in camera footage
+
+Open (or drop) a **video** instead of an audio file: its soundtrack is analysed like any song,
+and its picture becomes camera footage that trades places with the shader.
+
+- **Auto**: the song opens on the camera; its quietest sections stay there (*Camera share*) and
+  the loud ones go to the shader. Drops slam in fast. Other changes land on a downbeat after a
+  transition of *Transition (bars)*.
+- **The transition**: the dark parts of the frame dissolve first, while the footage's lights
+  (LEDs, screens, pads) keep glowing into the shader's trails and bloom (*LED glow*).
+- On camera, the frame is the untouched footage. Title, lyrics and the outro still draw on top.
+- <kbd>V</kbd> flips camera ⇄ shader at the playhead and stores your changes per video;
+  <kbd>Shift</kbd>+<kbd>V</kbd> goes back to automatic. *Camera footage → Show* forces camera
+  or shader only.
+- Exports decode the exact video frame for each output frame, so picture and sound stay in sync.
+  Live playback follows the audio with a muted `<video>` element, so it can drift by a frame or so.
 
 **Record live** (<kbd>C</kbd>, or *Export video → Record live*) is the other way: it
 captures the canvas and audio in real time, so scene keys you press, Auto VJ and live

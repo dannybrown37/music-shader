@@ -17,7 +17,7 @@
   <body>
     <canvas id="view"></canvas>
     <canvas id="hud"></canvas>
-    <div id="drop" hidden>Drop an audio file, cover art image, or .lrc lyrics</div>
+    <div id="drop" hidden>Drop an audio or video file, cover art image, or .lrc lyrics</div>
     <div id="status" role="status" hidden></div>
 
     <section id="welcome" hidden>
@@ -34,7 +34,7 @@
         </button>
         <button type="button" class="source" data-source="file">
           <span class="icon" aria-hidden="true">♪</span>
-          <span><strong>Open a song file</strong><small>Best quality: the whole song is analysed first</small></span>
+          <span><strong>Open a song file</strong><small>Audio, or a video to mix its camera footage in. The whole song is analysed first</small></span>
         </button>
         <select id="library" aria-label="Song library" hidden></select>
       </div>
@@ -80,7 +80,7 @@
     </div>
 
     <button id="advanced-close" type="button" hidden>Done</button>
-    <input id="file" type="file" accept="audio/*" hidden />
+    <input id="file" type="file" accept="audio/*,video/*" hidden />
     <script type="module" src="/src/main.ts"></script>
   </body>
 </html>

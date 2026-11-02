@@ -28,6 +28,24 @@ describe("mergeSettings", () => {
   });
 
   it.each([
+    [
+      { footage: { mode: "camera", cameraShare: 0.7, fadeBars: 4, intro: 0, glow: 2, pop: 0.2, cameraMax: 1 } },
+      { mode: "camera", cameraShare: 0.7, fadeBars: 4, intro: 0, glow: 2, pop: 0.2, cameraMax: 1 },
+    ],
+    [{ footage: { mode: "both", cameraShare: 5, fadeBars: -1, intro: "x", pop: 9 } }, { ...defaultSettings().footage, cameraShare: 1, fadeBars: 0, pop: 1 }],
+  ])("merges footage settings from %j", (patch, expected) => {
+    expect(mergeSettings(base, patch).footage).toEqual(expected);
+  });
+
+  it.each([
+    [{}, false],
+    [{ overlay: { posterText: true } }, true],
+    [{ overlay: { posterText: "yes" } }, false],
+  ])("poster text on the end screen from %j → %s", (patch, expected) => {
+    expect(mergeSettings(base, patch).overlay.posterText).toBe(expected);
+  });
+
+  it.each([
     [{ overlay: { artMode: "badge", artSize: 1.5, showLyrics: false } }, "badge", 1.5, false],
     [{ overlay: { artMode: "sticker", artSize: 99 } }, "off", 2, true],
     [{ overlay: { artMode: 2, artSize: -1, showLyrics: "no" } }, "off", 0.3, true],
@@ -46,7 +64,7 @@ describe("mergeSettings", () => {
   it.each([
     [{ autoScenes: true, autoSceneSeconds: 30 }, true, 30],
     [{ autoSceneSeconds: 1 }, false, 4],
-    [{ autoScenes: "yes", autoSceneSeconds: Number.POSITIVE_INFINITY }, false, 24],
+    [{ autoScenes: "yes", autoSceneSeconds: Number.POSITIVE_INFINITY }, false, 8],
   ])("merges auto-scene settings from %j", (patch, enabled, seconds) => {
     const out = mergeSettings(base, patch);
     expect(out.autoScenes).toBe(enabled);

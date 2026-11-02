@@ -58,11 +58,13 @@ src/
     portrait.ts        the whole song as a 720-column texture for the Portrait scene
     outro.ts           timing of the Portrait outro at the end of a song
     show.ts            hand-placed cues per song → scene, palette, crossfade at t
+    footage.ts         video files: auto/hand-placed camera ⇄ shader cues → mix at t
     palettes.ts        4-stop gradients, section cycling
     shaders/           common.glsl (shared header), feedback, bloom, luminance, composite
     scenes/            one .glsl per scene + index.ts registry (params, look, palette)
   ui/                  shell (start screen, dock, sheets, gestures, wake lock), lil-gui "advanced" panel,
                        debug HUD, title card + lyric drawing, scene/preset browser, show timeline
+  footage/video.ts     camera footage of a loaded video: live <video> follows Player.time, export decodes exact frames
   export/video.ts      offline WebCodecs export via mediabunny
   export/recorder.ts   real-time recording (canvas + audio) via MediaRecorder
   export/thumbnail.ts  picks the song's most intense moment for the YouTube thumbnail
@@ -201,6 +203,23 @@ A **show** (`show.ts`) replaces this when the song has cues and *Play this song'
 `App.autoVjCues` turns the Auto VJ schedule into cues as a starting point.
 Live input can't look ahead (a late-detected section would rewrite the past), so it
 keeps its full section/downbeat history and aligns cuts to the previous section only.
+
+## Camera footage (video files)
+
+```
+video file ─► audio ─► analysis ─► autoFootageCues (quietest sections → camera until Camera share;
+          │                          drops → shader in 0.25 s; others on a downbeat)  or hand-placed (V)
+          │                                   │
+          │                         footageMixAt(t): 0 camera … 1 shader (smoothstep, lands on the cue)
+          │                                   │
+          └─► frame at t ─► feedback: + footage lights × glow · 4m(1−m)   (LEDs feed trails/bloom)
+              live: <video>   composite (after tonemap): untouched footage, alpha by luma —
+              export: mediabunny          dark parts dissolve first, lights last
+```
+
+Pure function of t like the Auto VJ, so seeking and export agree. The outro fades the camera out.
+Export asks `ExportJob.prepare` for a frame sequence (`CanvasSink.canvasesAtTimestamps`, each packet
+decoded once) and awaits the next frame before each `renderFrame`.
 
 ## Rendering
 

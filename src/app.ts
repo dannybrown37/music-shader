@@ -22,6 +22,9 @@ import { buildSchedule, sceneAt } from "./render/schedule.ts";
 import type { Downbeats, ScheduleOptions } from "./render/schedule.ts";
 import { cuesFromSchedule, parseShow, showAt } from "./render/show.ts";
 import type { Cue } from "./render/show.ts";
+import { autoFootageCues, barSeconds, footageMixAt, parseFootageCues, popAt, toggleFootageCue } from "./render/footage.ts";
+import type { FootageCue } from "./render/footage.ts";
+import { FootageVideo, isVideoFile } from "./footage/video.ts";
 import { songStore } from "./song-store.ts";
 import { lyricAt, parseLrc } from "./lyrics.ts";
 import type { LyricLine } from "./lyrics.ts";
@@ -63,6 +66,8 @@ const lyricsStore = songStore(
   (text) => text === "",
 );
 
+const footageStore = songStore("music-shader.footage", parseFootageCues, (cues) => cues.length === 0);
+
 const FADE_SECONDS = 1.5;
 const PORTRAIT = "portrait";
 /** Below this the key estimate is a guess, so the poster leaves it out. */
@@ -100,6 +105,11 @@ export class App {
   onShowChanged: () => void = () => {};
   lyrics: LyricLine[] = [];
   private lyricKey = "";
+  /** Camera footage when the loaded file is a video. */
+  footage: FootageVideo | null = null;
+  /** Hand-placed camera/shader changes for this video; empty = automatic. */
+  footageManual: FootageCue[] = [];
+  private footageAuto: { key: string; cues: FootageCue[] } | null = null;
 
   private sampler: FeatureSampler | null = null;
   private rawAnalysis: TrackAnalysis | null = null;
@@ -167,6 +177,88 @@ export class App {
 
   async loadFile(file: File): Promise<void> {
     await this.loadArrayBuffer(file.name, await file.arrayBuffer());
+    if (!isVideoFile(file)) return;
+    this.onStatus("Opening the video track…");
+    this.footage = await FootageVideo.open(file);
+    this.footageManual = footageStore.load(this.songKey);
+    this.onStatus(`${this.trackName}: camera footage ${this.footage.width}×${this.footage.height}. V flips camera/shader at the playhead.`);
+  }
+
+  /** Dev server / tools: load a video (or audio) file by URL. */
+  async loadUrl(url: string): Promise<void> {
+    const blob = await (await fetch(url)).blob();
+    const name = decodeURIComponent(url.split("/").pop() ?? "video");
+    await this.loadFile(new File([blob], name, { type: blob.type }));
+  }
+
+  private dropFootage(): void {
+    this.footage?.dispose();
+    this.footage = null;
+    this.footageManual = [];
+    this.footageAuto = null;
+    this.renderer.setVideoFrame(null, 0);
+  }
+
+  /** Camera/shader changes in effect: the hand-placed ones, else the automatic plan. */
+  footageCues(): FootageCue[] {
+    if (this.footageManual.length > 0) return this.footageManual;
+    const a = this.analysis;
+    if (!a) return [];
+    const f = this.settings.footage;
+    const key = `${this.songKey}|${this.tempoFactor}|${f.cameraShare}|${f.fadeBars}|${f.intro}`;
+    if (this.footageAuto?.key !== key) {
+      const cues = autoFootageCues(
+        { duration: a.duration, fps: a.fps, intensity: a.scalars.intensity, sections: a.events.section.times, drops: a.events.drop.times, downbeats: a.events.downbeat.times },
+        f,
+      );
+      this.footageAuto = { key, cues };
+    }
+    return this.footageAuto.cues;
+  }
+
+  /** V: flip camera/shader from the bar nearest t (or remove the change already there). Starts from the auto plan. */
+  toggleFootageAt(t: number): void {
+    const a = this.analysis;
+    if (!this.footage || !a) {
+      this.onStatus("Load a video file first", true);
+      return;
+    }
+    const fade = this.settings.footage.fadeBars * barSeconds(a.events.downbeat.times);
+    this.setFootageCues(toggleFootageCue(this.footageCues(), t, a.events.downbeat.times, fade));
+  }
+
+  setFootageCues(cues: FootageCue[]): void {
+    this.footageManual = cues;
+    if (this.songKey) footageStore.save(this.songKey, cues);
+  }
+
+  /** Stills: decode the exact camera frame for t before rendering it. */
+  async prepareFootage(t: number): Promise<void> {
+    await this.footage?.seek(t);
+  }
+
+  /** Export: decode the camera frame for each of `times` in order. */
+  footageSequence(times: number[]): Promise<{ next: () => Promise<void>; done: () => void } | null> {
+    return this.footage ? this.footage.sequence(times) : Promise.resolve(null);
+  }
+
+  /**
+   * How much camera is on screen at t (0..Camera max): the held camera parts, plus a swell
+   * around each scene change.
+   */
+  private cameraAt(t: number, sceneChanges: ArrayLike<number>): number {
+    if (!this.footage || !this.analysis || this.live) return 0;
+    const f = this.settings.footage;
+    const bar = barSeconds(this.analysis.events.downbeat.times);
+    const pop = f.mode === "auto" ? f.pop * popAt(t, sceneChanges, bar / 2, 1.5 * bar) : 0;
+    return Math.min(f.cameraMax, Math.max(1 - this.footageMix(t), pop));
+  }
+
+  /** 0 = camera, 1 = shader at song time t. */
+  footageMix(t: number): number {
+    if (!this.footage || this.live || !this.sampler) return 1;
+    const mode = this.settings.footage.mode;
+    return mode === "camera" ? 0 : mode === "shader" ? 1 : footageMixAt(t, this.footageCues());
   }
 
   get isLive(): boolean {
@@ -249,6 +341,7 @@ export class App {
   private async loadArrayBuffer(name: string, data: ArrayBuffer): Promise<void> {
     this.stopLive();
     this.player.pause();
+    this.dropFootage();
     // decodeAudioData detaches `data`, so take its size for the cache key first.
     const key = cacheKey(name, data.byteLength);
     this.onStatus(`Decoding ${name}…`);
@@ -317,6 +410,7 @@ export class App {
         const t = this.live ? this.live.time : this.sampler ? this.player.time : now / 1000;
         if (Math.abs(t - this.lastTime) > 0.5) this.renderer.resetFeedback();
         this.lastTime = t;
+        if (this.footage && !this.live) this.footage.follow(t, this.player.playing);
         this.renderAt(t, dt);
         if (this.settings.overlay.showHud) this.hud.draw(this.features, `${this.trackName} · ${Math.round(this.quality.scale * 100)}% res`);
       }
@@ -343,7 +437,9 @@ export class App {
     let scene = sceneById(s.scene);
     let fade: SceneFade | undefined;
     let looks = s;
+    let sceneChanges: ArrayLike<number> = [];
     if (this.showActive) {
+      sceneChanges = this.show.map((c) => c.t);
       const at = showAt(t, this.show, { scene: s.scene, palette: null }, { fade: FADE_SECONDS, lead: FADE_LEAD_SECONDS });
       scene = sceneById(at.scene);
       looks = withPalette(s, at.palette);
@@ -355,6 +451,7 @@ export class App {
       const scenes = vjScenes();
       const start = Math.max(0, scenes.findIndex((x) => x.id === s.scene));
       const events = buildSchedule(source.sectionTimes(), source.downbeats(), this.scheduleOptions(), source.dropTimes());
+      sceneChanges = events.map((e) => (e.cut ? e.time : e.time + FADE_SECONDS / 2));
       const at = sceneAt(t, events, { sceneCount: scenes.length, start, fade: FADE_SECONDS });
       scene = scenes[at.current];
       if (at.previous >= 0) {
@@ -382,9 +479,13 @@ export class App {
     const reveal = !song || duration <= 0 ? 0 : outro.mix > 0 ? outro.reveal : Math.min(1, t / duration);
     uniforms.uReveal = reveal;
     if (fade) fade.uniforms.uReveal = reveal;
-    const poster = song && scene.id === PORTRAIT ? (outro.mix > 0 ? outro.text : 1) : 0;
+    const poster = song && s.overlay.posterText && scene.id === PORTRAIT ? (outro.mix > 0 ? outro.text : 1) : 0;
     if (poster > 0) this.updatePosterText();
     this.updateOverlay();
+    const camera = this.cameraAt(t, sceneChanges) * (1 - outro.mix);
+    const videoGlow = s.footage.glow * 4 * camera * (1 - camera);
+    const frame = this.footage && (camera > 0 || videoGlow > 0) ? this.footage.frame : null;
+    if (frame && this.footage) this.renderer.setVideoFrame(frame, this.footage.aspect);
     this.renderer.render(
       uniforms,
       s.look,
@@ -394,6 +495,8 @@ export class App {
         art: s.overlay.artMode,
         artSize: s.overlay.artSize,
         poster,
+        camera: frame ? camera : 0,
+        videoGlow: frame ? videoGlow : 0,
       },
       dt,
       fade,
@@ -556,7 +659,7 @@ export class App {
       autoScenes: false,
       paletteCycle: false,
       look: { ...saved.look, ...portrait.look },
-      overlay: { ...saved.overlay, showTitle: false, showLyrics: false, artMode: "off", outro: 0 },
+      overlay: { ...saved.overlay, showTitle: false, showLyrics: false, artMode: "off", outro: 0, posterText: true },
     };
     try {
       this.renderStill(a.duration, width, height, 0.3, 30);

@@ -4,7 +4,7 @@ import type { App } from "../app.ts";
 import { builtinPresets, loadUserPresets, saveUserPresets, sceneParamsFor } from "../presets.ts";
 import { PALETTES } from "../render/palettes.ts";
 import { SCENES, sceneById } from "../render/scenes/index.ts";
-import { ART_MODES, ART_SIZE, AUTO_CUT_BARS, DECAY_RANGES, LOOK_RANGES, mergeSettings, OUTRO_RANGE, REACTIVITY_RANGES } from "../settings.ts";
+import { ART_MODES, ART_SIZE, AUTO_CUT_BARS, DECAY_RANGES, FOOTAGE_MODES, FOOTAGE_RANGES, LOOK_RANGES, mergeSettings, OUTRO_RANGE, REACTIVITY_RANGES } from "../settings.ts";
 import type { Range, Settings } from "../settings.ts";
 import { EXPORT_RESOLUTIONS } from "../export/video.ts";
 import type { TempoFactor } from "../analysis/beats.ts";
@@ -94,7 +94,7 @@ export class Panel {
         app.applyScene();
         changed();
       });
-    gui.add(s, "autoSceneSeconds", 8, 90, 1).name("Auto VJ: min seconds per scene").onChange(changed);
+    gui.add(s, "autoSceneSeconds", 4, 90, 1).name("Auto VJ: min seconds per scene").onChange(changed);
     gui.add(s, "autoCuts").name("Auto VJ: cut on the beat when loud").onChange(changed);
     gui.add(s, "autoCutIntensity", 0.3, 1, 0.01).name("Auto VJ: loud above").onChange(changed);
     gui.add(s, "autoCutBars", AUTO_CUT_BARS).name("Auto VJ: bars between cuts").onChange(changed);
@@ -135,6 +135,16 @@ export class Panel {
     overlay.add({ clear: () => this.loadLyricsText("", "") }, "clear").name("Clear lyrics");
     overlay.close();
 
+    const footage = gui.addFolder("Camera footage (video files)");
+    footage.add(s.footage, "mode", [...FOOTAGE_MODES]).name("Show").onChange(changed);
+    for (const [k, r] of Object.entries(FOOTAGE_RANGES) as [keyof typeof FOOTAGE_RANGES, Range][]) {
+      const c = footage.add(s.footage, k, r.min, r.max, r.step ?? 0.01).name(r.label ?? k).onChange(changed);
+      if (r.help) c.domElement.title = r.help;
+    }
+    footage.add({ flip: () => app.toggleFootageAt(app.player.time) }, "flip").name("Flip camera/shader here (V)");
+    footage.add({ reset: () => app.setFootageCues([]) }, "reset").name("Back to automatic (Shift+V)");
+    footage.close();
+
     this.buildShowFolder();
 
     const exp = gui.addFolder("Export video");
@@ -148,6 +158,7 @@ export class Panel {
     exp.add({ thumb: () => void this.savePng(() => this.app.renderYouTubeThumbnail(), "thumbnail") }, "thumb").name("YouTube thumbnail (PNG)");
     exp.add({ poster: () => void this.savePng(() => this.app.renderPoster(POSTER_SIZE, POSTER_SIZE), "poster") }, "poster").name("Song poster (PNG)");
     exp.add(s.overlay, "outro", OUTRO_RANGE.min, OUTRO_RANGE.max, 1).name(OUTRO_RANGE.label).onChange(changed).domElement.title = OUTRO_RANGE.help;
+    exp.add(s.overlay, "posterText").name("Outro: title, key and cast text").onChange(changed);
     exp.close();
 
     app.hud.visible = s.overlay.showHud;

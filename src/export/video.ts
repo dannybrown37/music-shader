@@ -41,6 +41,8 @@ export interface ExportJob {
   mode: "save" | "buffer";
   /** Draws the frame for time t into `canvas`. */
   renderFrame: (t: number, dt: number) => void;
+  /** Called with every frame time up front; the returned function runs before each renderFrame (camera footage decoding). */
+  prepare?: (times: number[]) => Promise<{ next: () => Promise<void>; done: () => void } | null>;
   onProgress: (fraction: number, etaSeconds: number) => void;
   signal: AbortSignal;
 }
@@ -121,14 +123,18 @@ export async function exportVideo(job: ExportJob): Promise<ArrayBuffer | null> {
   output.addAudioTrack(audio);
   await output.start();
 
+  let prepared: { next: () => Promise<void>; done: () => void } | null = null;
   try {
     await audio.add(sliceAudio(job.audio, job.start, job.end));
     const dt = 1 / job.fps;
     const frames = Math.max(1, Math.round((job.end - job.start) * job.fps));
+    const times = Array.from({ length: frames }, (_, i) => job.start + i * dt);
+    prepared = (await job.prepare?.(times)) ?? null;
     const began = performance.now();
     for (let i = 0; i < frames; i++) {
       if (job.signal.aborted) throw new DOMException("Export cancelled", "AbortError");
-      job.renderFrame(job.start + i * dt, dt);
+      await prepared?.next();
+      job.renderFrame(times[i], dt);
       await video.add(i * dt, dt);
       if (i % 10 === 0) {
         const elapsed = (performance.now() - began) / 1000;
@@ -140,5 +146,7 @@ export async function exportVideo(job: ExportJob): Promise<ArrayBuffer | null> {
   } catch (err: unknown) {
     await output.cancel();
     throw err;
+  } finally {
+    prepared?.done();
   }
 }

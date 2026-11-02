@@ -178,6 +178,8 @@ function main(): void {
   console.log(`${name} | ${a.duration.toFixed(1)}s | tempo ${a.tempo.toFixed(1)} | ${counts} | ${lines} | decode ${(t1 - t0).toFixed(0)}ms analyze ${(t2 - t1).toFixed(0)}ms`);
   const drops = Array.from(a.events.drop.times, (t, i) => `${t.toFixed(1)}s (${a.events.drop.strengths[i].toFixed(2)})`);
   console.log(`  drops: ${drops.join(", ") || "none"}`);
+  const sections = Array.from(a.events.section.times, (t, i) => `${t.toFixed(1)}s (${a.events.section.strengths[i].toFixed(2)})`);
+  console.log(`  sections: ${sections.join(", ") || "none"}`);
   const cast = a.cast.members.map((m) => `${m.label} (from ${m.firstSeen.toFixed(0)}s, ${Math.round(m.share * 100)}%)`);
   console.log(`  key: ${a.key.name} (${a.key.confidence.toFixed(2)}) | cast: ${cast.join(", ") || "none"}`);
   if (values.png) plot(a, Number(values.from), Number(values.seconds), values.png);

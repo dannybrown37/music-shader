@@ -101,6 +101,7 @@ async function main(): Promise<void> {
         fileName: `${name} ${opts.resolution}.mp4`,
         mode: "save",
         renderFrame: (t, dt) => app.renderAt(t, dt),
+        prepare: (times) => app.footageSequence(times),
         onProgress: (p, eta) => showStatus(`Rendering ${Math.round(p * 100)}%, about ${formatTime(eta)} left. Click “Render video…” again to cancel`),
         signal: abort.signal,
       })
@@ -157,6 +158,8 @@ async function main(): Promise<void> {
   }
   const initial = params.get("track");
   if (initial) app.loadTrackByName(initial).catch((err: unknown) => showStatus(String(err), true));
+  const initialVideo = params.get("video");
+  if (initialVideo?.startsWith("/")) app.loadUrl(initialVideo).catch((err: unknown) => showStatus(String(err), true));
   const live = params.get("live");
   if (live === "mic" || live === "tab") app.startLive(live).catch((err: unknown) => showStatus(String(err), true));
 }
@@ -241,6 +244,12 @@ function wireKeys(app: App, panel: Panel, browser: PresetBrowser, shell: Shell, 
     else if (e.key === "t" || e.key === "T") panel.cycleTempo();
     else if (e.key === "c" || e.key === "C") void toggleRecording(app);
     else if (e.key === "k" || e.key === "K") panel.addCue();
+    else if (e.key === "v" || e.key === "V") {
+      if (e.shiftKey) {
+        app.setFootageCues([]);
+        showStatus("Camera/shader changes back to automatic");
+      } else app.toggleFootageAt(app.player.time);
+    }
     else if (e.key === "Delete" || e.key === "Backspace") panel.deleteSelectedCue();
     else if (e.key === "p" || e.key === "P") {
       const i = PALETTES.findIndex((p) => p.name === s.palette);
@@ -298,6 +307,8 @@ async function runStill(app: App, params: URLSearchParams): Promise<void> {
   applyOverrides(app, params.get("set"));
   const track = params.get("track");
   if (track) await app.loadTrackByName(track);
+  const video = params.get("video");
+  if (video?.startsWith("/")) await app.loadUrl(video);
   const art = params.get("art");
   if (art) await app.setArt(await (await fetch(art)).blob());
   const lrc = params.get("lrc");
@@ -318,6 +329,8 @@ async function runStill(app: App, params: URLSearchParams): Promise<void> {
     await runExportTest(app, t, num("export", 2), w, h, fps);
     return;
   }
+  if (app.footage) console.info(`footage cues ${JSON.stringify(app.footageCues().map((c) => [+c.time.toFixed(2), c.camera ? "cam" : "shader", +c.fade.toFixed(2)]))}`);
+  await app.prepareFootage(t);
   app.renderStill(t, w, h, num("warm", 1), fps);
   console.info(`adapted luminance ${app.renderer.adaptedLuminance().toFixed(4)} glError ${app.renderer.gl.getError()}`);
   const frames = num("sheet", 0);
@@ -381,6 +394,7 @@ async function runExportTest(app: App, start: number, seconds: number, w: number
     fileName: "test.mp4",
     mode: "buffer",
     renderFrame: (tt, dt) => app.renderAt(tt, dt),
+    prepare: (times) => app.footageSequence(times),
     onProgress: () => {},
     signal: new AbortController().signal,
   });

@@ -28,6 +28,10 @@ export interface Layers {
   artSize: number;
   /** Opacity of the Portrait's poster text. */
   poster: number;
+  /** Camera footage on top: 0 = none, 1 = the untouched video frame. */
+  camera: number;
+  /** Footage lights added into the trails (mid-transition glow). */
+  videoGlow: number;
 }
 
 const BLOOM_LEVELS = 6;
@@ -69,6 +73,8 @@ export class Renderer {
   private readonly artTexture: WebGLTexture;
   private artAspect = 0;
   private hasLyrics = false;
+  private readonly videoTexture: WebGLTexture;
+  private videoAspect = 0;
   private readonly scenePrograms = new Map<string, Program>();
   private scene: Program | null = null;
   private sceneTarget: Target | null = null;
@@ -104,6 +110,13 @@ export class Renderer {
     this.posterTexture = createImageTexture(gl, false);
     this.lyricsTexture = createImageTexture(gl, false);
     this.artTexture = createImageTexture(gl, true);
+    this.videoTexture = createImageTexture(gl, false);
+  }
+
+  /** This frame of the camera footage; null when no video is loaded. */
+  setVideoFrame(frame: TexImageSource | null, aspect: number): void {
+    this.videoAspect = frame ? aspect : 0;
+    if (frame) this.uploadImage(this.videoTexture, frame, false);
   }
 
   /** Compiles on first use; throws ShaderError with line context if the scene doesn't compile. */
@@ -248,6 +261,10 @@ export class Renderer {
     fb.set("uHueShift", look.feedbackHue * frames60);
     fb.set("uWarp", (uniforms.uBass as number) ?? 0);
     fb.set("uTime", (uniforms.uTime as number) ?? 0);
+    const hasVideo = this.videoAspect > 0;
+    fb.set("uVideo", this.videoTexture);
+    fb.set("uVideoAspect", this.videoAspect || 1);
+    fb.set("uVideoLed", hasVideo ? layers.videoGlow * (1 + kick) : 0);
     tri.draw(next);
     this.ping = 1 - this.ping;
 
@@ -320,6 +337,9 @@ export class Renderer {
     comp.set("uAutoExposure", look.autoExposure);
     comp.set("uKey", key);
     comp.set("uDesaturate", Math.min(0.85, 0.65 * build));
+    comp.set("uVideo", this.videoTexture);
+    comp.set("uVideoAspect", this.videoAspect || 1);
+    comp.set("uCamera", hasVideo ? layers.camera : 0);
     comp.set("uChromatic", look.chromatic * (0.3 + 1.5 * ((uniforms.uSnare as number) ?? 0) + 0.7 * kick) + 2.5 * flash);
     comp.set("uGrain", look.grain * (1 + build));
     comp.set("uVignette", Math.min(1.5, look.vignette + 0.7 * build));
