@@ -72,8 +72,9 @@ export class Cdp {
   }
 }
 
-async function waitForTarget(): Promise<string> {
-  for (let i = 0; i < 100; i++) {
+async function waitForTarget(exited: () => boolean): Promise<string> {
+  // Cold starts on CI runners have exceeded 10s.
+  for (let i = 0; i < 300 && !exited(); i++) {
     try {
       const res = await fetch(`http://127.0.0.1:${PORT}/json/list`);
       const targets = (await res.json()) as { type: string; webSocketDebuggerUrl: string }[];
@@ -102,10 +103,23 @@ export async function launchChrome(width: number, height: number, extraArgs: str
       ...extraArgs,
       "about:blank",
     ],
-    { stdio: "ignore" },
+    { stdio: ["ignore", "ignore", "pipe"] },
   );
+  let stderr = "";
+  chrome.stderr.on("data", (d: Buffer) => {
+    stderr = (stderr + d.toString()).slice(-4000);
+  });
+  let exited = false;
+  chrome.on("exit", () => (exited = true));
+  chrome.on("error", (err: Error) => {
+    exited = true;
+    stderr += String(err);
+  });
   try {
-    const cdp = await Cdp.connect(await waitForTarget());
+    const target = await waitForTarget(() => exited).catch((err: unknown) => {
+      throw new Error(`${err instanceof Error ? err.message : String(err)}${exited ? " (process exited)" : ""}\n${stderr}`);
+    });
+    const cdp = await Cdp.connect(target);
     await cdp.send("Runtime.enable");
     await cdp.send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 1, mobile: false });
     return {
