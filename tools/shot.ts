@@ -9,7 +9,8 @@
  * --export S encodes S seconds from --t to an .mp4 (WebCodecs) instead of taking a screenshot.
  * --art /out/cover.png and --lrc /out/song.lrc load cover art and lyrics (URLs on the dev server);
  * --thumbnail renders the YouTube thumbnail (use --w 1280 --h 720); --poster the song's Portrait poster.
- * --video /out/clip.mp4 loads a video instead of --track (its audio is the song, its picture the camera footage).
+ * --video /out/clip.mp4 loads a video instead of --track (its audio is the song, its picture the camera footage);
+ *   --soundtrack /out/master.wav then replaces that audio (must match the video's length).
  * --ui --live song.wav runs the live-input path with the WAV as a fake microphone (add --hud for meters).
  * --ui --keys TD presses each character as a key (1.5 s apart) before the screenshot;
  *   named keys go in braces: --keys "{Space}4K{ArrowRight}2K".
@@ -26,6 +27,7 @@ async function main(): Promise<void> {
     options: {
       track: { type: "string", default: "Haus of You [2019, edm].mp3" },
       video: { type: "string" },
+      soundtrack: { type: "string" },
       t: { type: "string", default: "45" },
       scene: { type: "string", default: "nebula" },
       w: { type: "string", default: "640" },
@@ -60,6 +62,7 @@ async function main(): Promise<void> {
       const q = new URLSearchParams(
         values.live ? { live: "mic", scene: values.scene } : values.welcome ? {} : values.video ? { video: values.video, scene: values.scene } : { track: values.track, scene: values.scene },
       );
+      if (values.soundtrack) q.set("soundtrack", values.soundtrack);
       if (values.hud) q.set("hud", "1");
       if (values.mobile) {
         await cdp.send("Emulation.setDeviceMetricsOverride", { width: Number(values.w), height: Number(values.h), deviceScaleFactor: 2, mobile: true });
@@ -89,6 +92,7 @@ async function main(): Promise<void> {
     for (const t of values.t.split(",")) {
       const q = new URLSearchParams({ still: "1", t, scene: values.scene, w: values.w, h: values.h, warm: values.warm, fps: values.fps });
       q.set(values.video ? "video" : "track", values.video ?? values.track);
+      if (values.soundtrack) q.set("soundtrack", values.soundtrack);
       if (values.set) q.set("set", values.set);
       if (values.title) q.set("title", "1");
       if (values.art) q.set("art", values.art);

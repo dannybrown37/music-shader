@@ -42,6 +42,10 @@ export class FootageVideo {
     return new FootageVideo(file, v, url);
   }
 
+  get duration(): number {
+    return this.element.duration;
+  }
+
   get aspect(): number {
     return this.height > 0 ? this.width / this.height : 16 / 9;
   }

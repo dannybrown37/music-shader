@@ -1,5 +1,7 @@
 import { App } from "./app.ts";
 import { listTracks } from "./audio/library.ts";
+import { pairVideoAndSoundtrack } from "./footage/soundtrack.ts";
+import { receiveHandoff } from "./handoff.ts";
 import { exportVideo, EXPORT_RESOLUTIONS } from "./export/video.ts";
 import { builtinPresets } from "./presets.ts";
 import { PALETTES } from "./render/palettes.ts";
@@ -59,10 +61,7 @@ async function main(): Promise<void> {
   const tracks = await listTracks();
   const fileInput = $<HTMLInputElement>("file");
   const openFile = (): void => fileInput.click();
-  fileInput.onchange = (): void => {
-    const file = fileInput.files?.[0];
-    if (file) app.loadFile(file).catch((err: unknown) => showStatus(String(err), true));
-  };
+  fileInput.onchange = (): void => openFiles(app, [...(fileInput.files ?? [])]);
 
   let abort: AbortController | null = null;
   let browser: PresetBrowser | null = null;
@@ -159,7 +158,18 @@ async function main(): Promise<void> {
   const initial = params.get("track");
   if (initial) app.loadTrackByName(initial).catch((err: unknown) => showStatus(String(err), true));
   const initialVideo = params.get("video");
-  if (initialVideo?.startsWith("/")) app.loadUrl(initialVideo).catch((err: unknown) => showStatus(String(err), true));
+  const soundtrack = params.get("soundtrack");
+  if (initialVideo?.startsWith("/"))
+    app
+      .loadUrl(initialVideo)
+      .then(() => (soundtrack?.startsWith("/") ? app.loadUrl(soundtrack) : undefined))
+      .catch((err: unknown) => showStatus(String(err), true));
+  if (params.has("handoff")) {
+    showStatus("Waiting for Master Kit…");
+    receiveHandoff(window)
+      .then(({ video, soundtrack }) => app.loadVideoWithSoundtrack(video, soundtrack))
+      .catch((err: unknown) => showStatus(String(err), true));
+  }
   const live = params.get("live");
   if (live === "mic" || live === "tab") app.startLive(live).catch((err: unknown) => showStatus(String(err), true));
 }
@@ -204,12 +214,20 @@ function wireDragDrop(app: App, panel: Panel): void {
     e.preventDefault();
     depth = 0;
     drop.hidden = true;
-    const file = e.dataTransfer?.files[0];
+    const files = [...(e.dataTransfer?.files ?? [])];
+    const file = files[0];
     if (!file) return;
     if (file.type.startsWith("image/")) panel.loadArt(file);
     else if (/\.lrc$/i.test(file.name)) panel.loadLyrics(file);
-    else app.loadFile(file).catch((err: unknown) => showStatus(String(err), true));
+    else openFiles(app, files);
   });
+}
+
+/** One file loads as usual; a video plus an audio file loads the video with that audio as its soundtrack. */
+function openFiles(app: App, files: File[]): void {
+  const pair = pairVideoAndSoundtrack(files);
+  const loading = pair ? app.loadVideoWithSoundtrack(pair.video, pair.soundtrack) : files[0] ? app.loadFile(files[0]) : null;
+  loading?.catch((err: unknown) => showStatus(String(err), true));
 }
 
 function wireKeys(app: App, panel: Panel, browser: PresetBrowser, shell: Shell, openFile: () => void): void {
@@ -309,6 +327,8 @@ async function runStill(app: App, params: URLSearchParams): Promise<void> {
   if (track) await app.loadTrackByName(track);
   const video = params.get("video");
   if (video?.startsWith("/")) await app.loadUrl(video);
+  const soundtrack = params.get("soundtrack");
+  if (soundtrack?.startsWith("/")) await app.loadUrl(soundtrack);
   const art = params.get("art");
   if (art) await app.setArt(await (await fetch(art)).blob());
   const lrc = params.get("lrc");

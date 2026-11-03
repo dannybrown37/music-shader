@@ -158,6 +158,13 @@ to cancel.
 Open (or drop) a **video** instead of an audio file: its soundtrack is analysed like any song,
 and its picture becomes camera footage that trades places with the shader.
 
+**Mastered soundtrack**: to use a separately mastered WAV instead of the video's own audio, open or
+drop the video and the WAV together (or drop the WAV onto a loaded video). Playback, analysis and
+export then use the WAV. It must match the video's length to within 0.1 s; otherwise it loads as
+an ordinary song. From [Master Kit](https://master.dannybrown.dev), **Open in Music Shader** does
+this in one click: it opens `/?handoff=1` and sends both files with `postMessage` (accepted only
+from master.dannybrown.dev, or `127.0.0.1:5174`/`localhost:5174` in dev).
+
 - **Auto**: the song opens on the camera; its quietest sections stay there (*Camera share*) and
   the loud ones go to the shader. Drops slam in fast. Other changes land on a downbeat after a
   transition of *Transition (bars)*.

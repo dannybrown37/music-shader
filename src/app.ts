@@ -25,6 +25,7 @@ import type { Cue } from "./render/show.ts";
 import { autoFootageCues, barSeconds, footageMixAt, parseFootageCues, popAt, toggleFootageCue } from "./render/footage.ts";
 import type { FootageCue } from "./render/footage.ts";
 import { FootageVideo, isVideoFile } from "./footage/video.ts";
+import { isAudioFile, soundtrackMismatch } from "./footage/soundtrack.ts";
 import { songStore } from "./song-store.ts";
 import { lyricAt, parseLrc } from "./lyrics.ts";
 import type { LyricLine } from "./lyrics.ts";
@@ -107,6 +108,7 @@ export class App {
   private lyricKey = "";
   /** Camera footage when the loaded file is a video. */
   footage: FootageVideo | null = null;
+  private footageFile: File | null = null;
   /** Hand-placed camera/shader changes for this video; empty = automatic. */
   footageManual: FootageCue[] = [];
   private footageAuto: { key: string; cues: FootageCue[] } | null = null;
@@ -175,13 +177,47 @@ export class App {
     await this.loadArrayBuffer(name, await fetchTrack(name));
   }
 
+  /** Audio opened while a video is loaded becomes its soundtrack when the lengths match. */
   async loadFile(file: File): Promise<void> {
+    if (this.footageFile && isAudioFile(file) && (await this.attachSoundtrack(this.footageFile, file)) === null) return;
     await this.loadArrayBuffer(file.name, await file.arrayBuffer());
     if (!isVideoFile(file)) return;
     this.onStatus("Opening the video track…");
-    this.footage = await FootageVideo.open(file);
+    this.setFootage(file, await FootageVideo.open(file));
+  }
+
+  /** A video whose audio is replaced by a separately mastered soundtrack of the same length. */
+  async loadVideoWithSoundtrack(video: File, soundtrack: File): Promise<void> {
+    const problem = await this.attachSoundtrack(video, soundtrack);
+    if (problem) throw new Error(problem);
+  }
+
+  private async attachSoundtrack(video: File, soundtrack: File): Promise<string | null> {
+    this.stopLive();
+    this.player.pause();
+    const reuse = this.footageFile === video ? this.footage : null;
+    if (!reuse) this.onStatus("Opening the video track…");
+    const footage = reuse ?? (await FootageVideo.open(video));
+    const data = await soundtrack.arrayBuffer();
+    const key = cacheKey(soundtrack.name, data.byteLength);
+    this.onStatus(`Decoding ${soundtrack.name}…`);
+    const buffer = await this.player.decode(data);
+    const problem = soundtrackMismatch(buffer.duration, footage.duration);
+    if (problem) {
+      if (!reuse) footage.dispose();
+      return problem;
+    }
+    if (!reuse) this.dropFootage();
+    await this.loadDecoded(video.name, key, buffer);
+    this.setFootage(video, footage, ` with soundtrack ${soundtrack.name}`);
+    return null;
+  }
+
+  private setFootage(file: File, footage: FootageVideo, note = ""): void {
+    this.footage = footage;
+    this.footageFile = file;
     this.footageManual = footageStore.load(this.songKey);
-    this.onStatus(`${this.trackName}: camera footage ${this.footage.width}×${this.footage.height}. V flips camera/shader at the playhead.`);
+    this.onStatus(`${this.trackName}: camera footage ${footage.width}×${footage.height}${note}. V flips camera/shader at the playhead.`);
   }
 
   /** Dev server / tools: load a video (or audio) file by URL. */
@@ -194,6 +230,7 @@ export class App {
   private dropFootage(): void {
     this.footage?.dispose();
     this.footage = null;
+    this.footageFile = null;
     this.footageManual = [];
     this.footageAuto = null;
     this.renderer.setVideoFrame(null, 0);
@@ -345,7 +382,10 @@ export class App {
     // decodeAudioData detaches `data`, so take its size for the cache key first.
     const key = cacheKey(name, data.byteLength);
     this.onStatus(`Decoding ${name}…`);
-    const buffer = await this.player.decode(data);
+    await this.loadDecoded(name, key, await this.player.decode(data));
+  }
+
+  private async loadDecoded(name: string, key: string, buffer: AudioBuffer): Promise<void> {
     const t0 = performance.now();
     let analysis = await loadCachedAnalysis(key);
     const cached = analysis !== null;
