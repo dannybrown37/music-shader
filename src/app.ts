@@ -448,7 +448,7 @@ export class App {
         fade = { scene: from, uniforms: this.fadeReactor.build(f, withPalette(s, at.from.palette), this.paramsNow(from)), mix: at.mix };
       }
     } else if (s.autoScenes && source) {
-      const scenes = vjScenes();
+      const scenes = vjScenes(s.autoVjScenes);
       const start = Math.max(0, scenes.findIndex((x) => x.id === s.scene));
       const events = buildSchedule(source.sectionTimes(), source.downbeats(), this.scheduleOptions(), source.dropTimes());
       sceneChanges = events.map((e) => (e.cut ? e.time : e.time + FADE_SECONDS / 2));
@@ -571,11 +571,11 @@ export class App {
   /** Auto VJ's choices for this song as cues, to start a show from. */
   autoVjCues(): Cue[] {
     if (!this.sampler) return [];
-    const start = Math.max(0, vjScenes().findIndex((x) => x.id === this.settings.scene));
+    const start = Math.max(0, vjScenes(this.settings.autoVjScenes).findIndex((x) => x.id === this.settings.scene));
     const events = buildSchedule(this.sampler.sectionTimes(), this.sampler.downbeats(), this.scheduleOptions(), this.sampler.dropTimes());
     return cuesFromSchedule(
       events,
-      vjScenes().map((x) => x.id),
+      vjScenes(this.settings.autoVjScenes).map((x) => x.id),
       start,
       FADE_LEAD_SECONDS,
     );

@@ -253,9 +253,11 @@ export const SCENES: SceneDef[] = [
   },
 ];
 
-/** Scenes Auto VJ cycles through (Portrait is a summary, not a performance). */
-export function vjScenes(): SceneDef[] {
-  return SCENES.filter((s) => s.autoVj !== false);
+/** Scenes Auto VJ cycles through: the picked ones, or all when none are picked (Portrait is a summary, not a performance). */
+export function vjScenes(picked: readonly string[] = []): SceneDef[] {
+  const all = SCENES.filter((s) => s.autoVj !== false);
+  const chosen = all.filter((s) => picked.includes(s.id));
+  return chosen.length > 0 ? chosen : all;
 }
 
 export function sceneById(id: string): SceneDef {

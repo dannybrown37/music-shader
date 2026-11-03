@@ -95,3 +95,20 @@ describe("mergeSettings", () => {
     expect(base.reactivity.kick).toBe(defaultSettings().reactivity.kick);
   });
 });
+
+describe("autoVjScenes", () => {
+  const base = defaultSettings();
+
+  it("defaults to every scene", () => {
+    expect(base.autoVjScenes).toEqual([]);
+  });
+
+  it.each([
+    [["tunnel", "orb"], ["tunnel", "orb"]],
+    [["tunnel", 3, "", "orb", "tunnel"], ["tunnel", "orb"]],
+    ["tunnel", []],
+    [null, []],
+  ])("keeps only unique scene names from %j", (patch, want) => {
+    expect(mergeSettings(base, { autoVjScenes: patch }).autoVjScenes).toEqual(want);
+  });
+});

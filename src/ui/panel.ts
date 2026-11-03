@@ -3,7 +3,7 @@ import type { Controller } from "lil-gui";
 import type { App } from "../app.ts";
 import { builtinPresets, loadUserPresets, saveUserPresets, sceneParamsFor } from "../presets.ts";
 import { PALETTES } from "../render/palettes.ts";
-import { SCENES, sceneById } from "../render/scenes/index.ts";
+import { SCENES, sceneById, vjScenes } from "../render/scenes/index.ts";
 import { ART_MODES, ART_SIZE, AUTO_CUT_BARS, DECAY_RANGES, FOOTAGE_MODES, FOOTAGE_RANGES, LOOK_RANGES, mergeSettings, OUTRO_RANGE, REACTIVITY_RANGES } from "../settings.ts";
 import type { Range, Settings } from "../settings.ts";
 import { EXPORT_RESOLUTIONS } from "../export/video.ts";
@@ -98,6 +98,16 @@ export class Panel {
     gui.add(s, "autoCuts").name("Auto VJ: cut on the beat when loud").onChange(changed);
     gui.add(s, "autoCutIntensity", 0.3, 1, 0.01).name("Auto VJ: loud above").onChange(changed);
     gui.add(s, "autoCutBars", AUTO_CUT_BARS).name("Auto VJ: bars between cuts").onChange(changed);
+    const vj = gui.addFolder("Auto VJ: scenes (none ticked = all)").close();
+    for (const scene of vjScenes()) {
+      const box = { on: s.autoVjScenes.includes(scene.id) };
+      vj.add(box, "on")
+        .name(scene.name)
+        .onChange((on: boolean) => {
+          s.autoVjScenes = on ? [...s.autoVjScenes, scene.id] : s.autoVjScenes.filter((id) => id !== scene.id);
+          changed();
+        });
+    }
     this.sceneFolder = gui.addFolder("Scene parameters");
     this.buildSceneFolder();
 

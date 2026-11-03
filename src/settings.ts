@@ -84,6 +84,8 @@ export interface Settings {
   sectionLooks: number;
   /** Auto VJ: switch to the next scene at section changes (crossfaded). */
   autoScenes: boolean;
+  /** Scene ids Auto VJ rotates through; empty = every scene. */
+  autoVjScenes: string[];
   /** Minimum seconds a scene stays before the next section may switch it. */
   autoSceneSeconds: number;
   /** Auto VJ: in loud parts, hard-cut on downbeats instead of crossfading. */
@@ -132,6 +134,7 @@ export function defaultSettings(): Settings {
     paletteCycle: true,
     sectionLooks: 0.3,
     autoScenes: false,
+    autoVjScenes: [],
     autoSceneSeconds: 8,
     autoCuts: true,
     autoCutIntensity: 0.6,
@@ -182,6 +185,9 @@ export function mergeSettings(base: Settings, patch: unknown): Settings {
   if (typeof patch.paletteCycle === "boolean") out.paletteCycle = patch.paletteCycle;
   if (typeof patch.sectionLooks === "number" && Number.isFinite(patch.sectionLooks)) out.sectionLooks = Math.min(1, Math.max(0, patch.sectionLooks));
   if (typeof patch.autoScenes === "boolean") out.autoScenes = patch.autoScenes;
+  if (Array.isArray(patch.autoVjScenes)) {
+    out.autoVjScenes = [...new Set(patch.autoVjScenes.filter((v): v is string => typeof v === "string" && v.length > 0 && v.length <= 64))];
+  }
   if (typeof patch.autoSceneSeconds === "number" && Number.isFinite(patch.autoSceneSeconds)) out.autoSceneSeconds = Math.max(4, patch.autoSceneSeconds);
   if (typeof patch.autoCuts === "boolean") out.autoCuts = patch.autoCuts;
   if (typeof patch.autoCutIntensity === "number" && Number.isFinite(patch.autoCutIntensity)) out.autoCutIntensity = Math.min(1, Math.max(0, patch.autoCutIntensity));
