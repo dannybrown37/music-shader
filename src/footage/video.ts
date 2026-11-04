@@ -4,6 +4,33 @@ import type { WrappedCanvas } from "mediabunny";
 /** Live playback lets the <video> drift this far from the audio before it is re-seeked. */
 const MAX_DRIFT = 0.12;
 
+const OPEN_TIMEOUT_MS = 20_000;
+
+/**
+ * Size and duration are all `open` needs. Waiting for the first decoded frame (`loadeddata`) can hang forever
+ * when Chrome defers or can't decode the picture, without ever firing `error`.
+ */
+export function waitForMetadata(video: EventTarget & { readyState: number }, timeoutMs: number): Promise<void> {
+  if (video.readyState >= 1) return Promise.resolve();
+  return new Promise((resolve, reject) => {
+    const settle = (err?: Error): void => {
+      clearTimeout(timer);
+      video.removeEventListener("loadedmetadata", onMeta);
+      video.removeEventListener("error", onError);
+      if (err) reject(err);
+      else resolve();
+    };
+    const onMeta = (): void => settle();
+    const onError = (): void => settle(new Error("This browser can't play the video track"));
+    const timer = setTimeout(
+      () => settle(new Error(`The video didn't open within ${Math.round(timeoutMs / 1000)} s: try converting it to H.264 MP4`)),
+      timeoutMs,
+    );
+    video.addEventListener("loadedmetadata", onMeta);
+    video.addEventListener("error", onError);
+  });
+}
+
 /**
  * The camera footage of a loaded video file.
  *
@@ -35,10 +62,13 @@ export class FootageVideo {
     v.playsInline = true;
     v.preload = "auto";
     v.src = url;
-    await new Promise<void>((resolve, reject) => {
-      v.onloadeddata = (): void => resolve();
-      v.onerror = (): void => reject(new Error("This browser can't play the video track"));
-    });
+    try {
+      await waitForMetadata(v, OPEN_TIMEOUT_MS);
+    } catch (err) {
+      v.removeAttribute("src");
+      URL.revokeObjectURL(url);
+      throw err;
+    }
     return new FootageVideo(file, v, url);
   }
 
