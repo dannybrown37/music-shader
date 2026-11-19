@@ -81,7 +81,8 @@ MUSIC_DIR=~/Music just dev    # use a different folder
 | 8 | **Gauntlet** | Terrain with a ship on the road · each snare → an obstacle rolling in from the horizon: pylons it slides past, spinning mines it blasts with twin lasers (*Shots between dodges* sets the mix) · kick → land waves + sun pulse · hats → lane lights · melody → a line written across the sky (now above the sun, older toward the edges) |
 | 9 | **Mosaic** | each kick / snare / note drops a shape wherever it still fits, until the screen is full (then each hit re-flashes the shape most like it); on the next downbeat they all fall away and it starts over (a section change clears it early) · shape = timbre: bright → more corners, noisy → spiky star, pitched → round · colour = instrument (timbre) · kicks solid, snares hollow, notes inset · each shape keeps breathing with its own sound (notes with their pitch) · hats → glints round every edge |
 | 0 | **Tessellate** | one tile shape covers the screen and keeps changing · timbre (averaged over the last second) picks the shape: bright → diamonds become Cairo pentagons and long hexagons, noisy → edges bend into interlocking Escher curves, the third axis leans the grid from square toward hexagonal · each snare turns the tiling a notch, kicks pump it · each tile fills with nested outlines as its band gets louder (bass at the centre), crawling inward on the beat · kick → waves of lit tiles · notes → the tiles of their pitch light up · hats → corner glints · each section → new lattice |
-
+| – | **Bounce** | a glossy ball hops to a new spot on every kick, timed to land on the next beat, squashing on landing · snare → a ball dropped from the sky that bounces itself out · notes → small balls popped up from the floor at their pitch (low notes left) · spectrum → the floor line, and every landing sends a ripple along it · hats → floor glints · the floor mirrors it all |
+| – | **Garden** | plants grow through each section: stems sprout one by one, leaves unfurl as each stem climbs past them, flowers open at the tips once grown · each stem is a band (bass left) lighting its leaves and flower · kick → sap pulses up the stems, flowers breathe · snare → a gust the plants spring back from · notes → blossoms open along a vine (higher notes higher up) · hats → fireflies · spectrum → the grass · each section → the old garden wilts, a new one sprouts |
 | – | **Portrait** | the whole song as one ring, drawn by a pen as it plays: time runs clockwise from twelve, bass inside, the outline breathes with intensity · colour = the sound playing · kicks and snares ring the inside · melody orbits outside · build-ups glow toward each drop, drops fire rays (pick it in the *Scene* list; Auto VJ skips it) |
 
 Every scene also gets trails, bloom, chromatic aberration, auto-exposure, grain and
@@ -103,7 +104,7 @@ drop                 ▲            flash, punch-in, bloom, a shell racing out; 
 - **Quiet vs loud**: quiet passages react less and sit darker, so the loud parts hit harder.
 - **The song's sounds (its cast)**: the pitched part of the mix (drums removed) is grouped
   into 1–6 recurring timbres, numbered in order of entrance. Each keeps one colour everywhere:
-  - notes in Nebula, Particles, Tessellate, Mosaic, Kaleido, Ensemble
+  - notes in Nebula, Particles, Tessellate, Mosaic, Kaleido, Ensemble, Bounce, Garden
   - the melody line in Tunnel and Gauntlet
   - the *sounds* lamps in the debug meters and the strip under the timeline
   - the poster

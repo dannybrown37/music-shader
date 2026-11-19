@@ -152,6 +152,7 @@ Uniform cheat-sheet (all in `common.glsl`):
 | `uBeatPhase uBarPhase uTempo` | 0..1 through the beat / 4-beat bar |
 | `uFlow` | time that runs faster when the music is busy; use it for motion |
 | `uCount` (kick, snare, hat, section) | counters for per-hit randomness: `hash11(uCount.y)` |
+| `uSectionAge` | seconds since the current section began (song time before the first): things that grow through a section. See `garden.glsl` |
 | `uKickHist[16] uSnareHist[16] uHatHist[16] uNoteHist[16]` | last 16 hits as (age s, strength), newest first; age < 0 = empty |
 | `uNotePitch[16] uNoteCount` | pitch class (C = 0) of each `uNoteHist` note; note counter. See `particles.glsl` |
 | `spectrum(x)` / `spectrogram(x, age)` | mel spectrum 0..1, and its last 2 s |

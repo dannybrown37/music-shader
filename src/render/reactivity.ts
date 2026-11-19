@@ -157,6 +157,7 @@ export class Reactor {
     u.uBeat = ev(f.env.beat, 1);
     u.uDownbeat = ev(f.env.downbeat, 1);
     u.uSection = Math.min(1.5, f.env.section);
+    u.uSectionAge = Math.min(f.since.section, f.time);
     this.count[0] = f.count.kick;
     this.count[1] = f.count.snare;
     this.count[2] = f.count.hat;

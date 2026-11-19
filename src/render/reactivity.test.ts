@@ -114,6 +114,17 @@ describe("Reactor", () => {
     expect(u.p_warp).toBe(0.3);
   });
 
+  it.each([
+    [Infinity, 42, 42],
+    [7.5, 42, 7.5],
+    [0, 42, 0],
+  ])("section age: since=%f at t=%f → %f", (since, time, want) => {
+    const f = createFeatures();
+    f.since.section = since;
+    f.time = time;
+    expect(new Reactor().build(f, defaultSettings(), {}).uSectionAge).toBe(want);
+  });
+
   it("passes recent notes with their pitch classes and count to the shaders", () => {
     const f = createFeatures();
     f.recent.note.set([0.2, 0.8, 0.6, 1]);

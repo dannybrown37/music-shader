@@ -26,6 +26,7 @@ uniform float uVoice;       // the line wavers like a voice (vibrato); a subset 
 // ---- Events: decaying envelopes (0..~1.5) -----------------------------------
 uniform float uKick, uSnare, uHat, uOnset, uNote, uBeat, uDownbeat, uSection;
 uniform vec4 uCount;        // events so far: kick, snare, hat, section
+uniform float uSectionAge;  // seconds since the current section began (song time before the first)
 uniform float uBeatPhase, uBarPhase, uTempo;
 // Recent hits, newest first: (age seconds, strength); age < 0 means empty slot.
 // Scenes mostly loop over the first 8; Gauntlet needs all 16 snares to plan its dodges.

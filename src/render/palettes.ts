@@ -20,6 +20,7 @@ export const PALETTES: Palette[] = [
   { name: "Ice", stops: ["#01030a", "#1d3b6e", "#7fb6ff", "#eef7ff"], manualOnly: true },
   { name: "Blood Moon", stops: ["#0b0000", "#5c0010", "#e0003a", "#ff9e7a"] },
   { name: "Acid", stops: ["#020a00", "#2bd60f", "#00d9f0", "#f000d0"] },
+  { name: "Garden", stops: ["#030a04", "#2e8b2a", "#ff4f8b", "#ffe9a0"] },
   { name: "Mono", stops: ["#000000", "#3a3a3a", "#a8a8a8", "#ffffff"], manualOnly: true },
 ];
 

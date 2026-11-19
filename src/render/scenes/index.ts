@@ -1,5 +1,7 @@
 import type { LookKey } from "../../settings.ts";
+import bounce from "./bounce.glsl?raw";
 import ensemble from "./ensemble.glsl?raw";
+import garden from "./garden.glsl?raw";
 import gauntlet from "./gauntlet.glsl?raw";
 import kaleido from "./kaleido.glsl?raw";
 import mosaic from "./mosaic.glsl?raw";
@@ -233,6 +235,43 @@ export const SCENES: SceneDef[] = [
     look: { feedback: 0.3, feedbackZoom: 0.003, feedbackSpin: 0, bloom: 1.2, bloomThreshold: 0.6, chromatic: 0.6 },
     palette: "Aurora",
     exposureKey: 0.03,
+  },
+  {
+    id: "bounce",
+    name: "Bounce",
+    description: "A ball hops to a new spot on every kick and lands on the beat; snares drop balls from the sky, notes pop them up from the floor",
+    source: bounce,
+    params: [
+      { key: "height", label: "Kick hop height", min: 0.2, max: 2, value: 1 },
+      { key: "size", label: "Ball size", min: 0.4, max: 2, value: 1 },
+      { key: "drops", label: "Snare drops", min: 0, max: 3, value: 1 },
+      { key: "pops", label: "Note pops", min: 0, max: 3, value: 1 },
+      { key: "glints", label: "Hat glints", min: 0, max: 3, value: 1 },
+      { key: "floor", label: "Spectrum floor", min: 0, max: 3, value: 1 },
+      { key: "reflect", label: "Reflections", min: 0, max: 2, value: 1 },
+    ],
+    look: { feedback: 0.35, feedbackZoom: 0.0, feedbackSpin: 0, bloom: 1.2, bloomThreshold: 0.6, chromatic: 0.5 },
+    palette: "Neon",
+    exposureKey: 0.01,
+  },
+  {
+    id: "garden",
+    name: "Garden",
+    description: "Plants grow through each section: stems by band, leaves unfurl, flowers open and breathe on kicks, notes blossom, snares are gusts",
+    source: garden,
+    params: [
+      { key: "plants", label: "Plants", min: 3, max: 14, value: 8, step: 1, steady: true },
+      { key: "growth", label: "Growth speed", min: 0.3, max: 3, value: 1 },
+      { key: "wind", label: "Wind & snare gusts", min: 0, max: 3, value: 1 },
+      { key: "blooms", label: "Flower size", min: 0, max: 2, value: 1 },
+      { key: "notes", label: "Note blossoms", min: 0, max: 3, value: 1 },
+      { key: "fireflies", label: "Hat fireflies", min: 0, max: 3, value: 1 },
+      { key: "grass", label: "Spectrum grass", min: 0, max: 3, value: 1 },
+      { key: "layout", label: "New garden per section", min: 0, max: 1, value: 1, step: 1, steady: true },
+    ],
+    look: { feedback: 0.2, feedbackZoom: 0.0, feedbackSpin: 0, bloom: 1.1, bloomThreshold: 0.65, chromatic: 0.3, vignette: 0.6 },
+    palette: "Garden",
+    exposureKey: 0.006,
   },
   {
     id: "portrait",
